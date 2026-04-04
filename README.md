@@ -1,6 +1,6 @@
 # YouTube-Embed-Enhancer
 
-Enhances YouTube Embeds with custom volume controls, hotkeys, and performance optimizations for a better viewing experience outside of the main YouTube site.
+Enhances YouTube Embeds with custom volume controls, hotkeys for a better viewing experience outside of the main YouTube site.
 
 ## 🚀 Features
 

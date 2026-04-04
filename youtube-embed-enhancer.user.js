@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      1.2.0
+// @version      1.3.0
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      MIT
@@ -16,7 +16,12 @@
   "use strict";
 
 
-  if (!document.querySelector(".ytp-play-button")) {
+  // Inject custom controls tightly if natively disabled via URL parameters (controls=0),
+  // or as a fallback if the standard player UI simply fails to render into the DOM.
+  const isControlsDisabled = new URLSearchParams(window.location.search).get("controls") === "0";
+  const isPlayButtonMissing = !document.querySelector(".ytp-play-button");
+
+  if (isControlsDisabled || isPlayButtonMissing) {
     document.head.appendChild(
       Object.assign(document.createElement("style"), {
         textContent: `

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      1.1.0
+// @version      1.2.0
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      MIT
@@ -287,6 +287,19 @@
       true
     );
 
+    // Mute toggle (M key)
+    window.addEventListener(
+      "keydown",
+      function (e) {
+        if (e.key === "m" || e.key === "M") {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          muteBtn.click();
+        }
+      },
+      true
+    );
+
     // Update slider and mute icon.
     video.addEventListener("volumechange", () => {
       muteBtn.classList.toggle("muted", video.muted);
@@ -314,9 +327,9 @@
     // Double click to fullscreen
     window.addEventListener("dblclick", (e) => {
       if (e.target.closest("#custom-mute-btn, #custom-vol-slider")) return;
-      
+
       if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
+        document.documentElement.requestFullscreen().catch(() => { });
       } else if (document.exitFullscreen) {
         document.exitFullscreen();
       }

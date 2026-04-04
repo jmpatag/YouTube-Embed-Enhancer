@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      1.0.1
+// @version      1.1.0
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      MIT
@@ -310,6 +310,17 @@
     window.addEventListener("keydown", showControls, { passive: true });
     window.addEventListener("wheel", showControls, { passive: true });
     showControls(); // Show immediately on load
+
+    // Double click to fullscreen
+    window.addEventListener("dblclick", (e) => {
+      if (e.target.closest("#custom-mute-btn, #custom-vol-slider")) return;
+      
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    });
 
     // Add all elements.
     document.body.prepend(volPct, vol, muteBtn);

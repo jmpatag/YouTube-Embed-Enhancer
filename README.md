@@ -1,6 +1,6 @@
 # YouTube-Embed-Enhancer
 
-Enhances YouTube Embeds with custom volume controls, hotkeys for a better viewing experience outside of the main YouTube site.
+Enhances YouTube Embeds with custom volume controls and hotkeys for a better viewing experience outside of the main YouTube site.
 
 ## 🚀 Features
 
@@ -24,7 +24,10 @@ To use this script, you first need to install a userscript manager extension in 
 
 ## 📖 Usage
 
-Once installed, the script will automatically activate whenever you view a page containing a YouTube embed. Look for the enhanced controls and try out your standard YouTube hotkeys (like `J`, `K`, `L` or arrow keys) to see the optimizations in action.
+Once installed, the script automatically activates on any page containing a YouTube embed.
+
+* **Volume Control:** Use the **Up/Down arrow keys** or your **Mouse Scroll Wheel** while hovering over the video player.
+* **Advanced:** Press **Shift + S** to quickly toggle the "Stats for Nerds" overlay.
 
 ## 📜 License
 

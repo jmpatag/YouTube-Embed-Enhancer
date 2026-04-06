@@ -4,8 +4,13 @@ The recent YouTube embed UI update restricts volume control to a simple mute/unm
 
 ## 🚀 Features
 
-* **Custom Volume Controls:** Granular control over audio levels directly within the embed.
-* **Keyboard Hotkeys:** Adjust volume using the **Up/Down arrow keys** or by using the **scroll wheel** while hovering over the player.
+* **Volume Control:** Use the **Up/Down arrow keys** or your **Mouse Scroll Wheel** while hovering over the video player.
+
+* **Playback speed** click the speed button to cycle (0.25x–2x), 
+  right-click to reset to 1x, or use . / , keys or scroll wheel when hovering to the speed button. 
+
+* **Advanced:** Press **Shift + S** or click the stats button in the bottom right corner to quickly toggle the "Stats for Nerds" overlay.
+
 * **Lightweight:** A pure `user.js` script designed to work seamlessly in the background.
 
 ## 🛠️ Installation
@@ -25,9 +30,6 @@ To use this script, you first need to install a userscript manager extension in 
 ## 📖 Usage
 
 Once installed, the script automatically activates on any page containing a YouTube embed.
-
-* **Volume Control:** Use the **Up/Down arrow keys** or your **Mouse Scroll Wheel** while hovering over the video player.
-* **Advanced:** Press **Shift + S** to quickly toggle the "Stats for Nerds" overlay.
 
 ## 📜 License
 

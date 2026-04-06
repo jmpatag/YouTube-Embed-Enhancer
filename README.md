@@ -1,6 +1,6 @@
 # YouTube-Embed-Enhancer
 
-Enhances YouTube Embeds with custom volume controls and hotkeys for a better viewing experience outside of the main YouTube site.
+The recent YouTube embed UI update restricts volume control to a simple mute/unmute toggle, preventing users from fine-tuning audio levels. This is particularly inconvenient for platforms like Holodex, where balancing audio across multiple simultaneous streams (POVs) is essential.
 
 ## 🚀 Features
 

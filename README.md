@@ -15,7 +15,7 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 ### ⏩ Playback Speed Control
 - **Click** the speed button to cycle (0.25x → 2x)
 - **Right-click** to reset to **1x**
-- Or use **. / , keys** or **scroll wheel** while hovering over the speed button
+- Or use **. and , keys** or **scroll wheel** while hovering over the speed button
 
 ### 🖼️ Picture-in-Picture (PiP)
 - Click the **PiP button** (bottom-right corner)  

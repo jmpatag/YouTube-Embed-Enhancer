@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      1.4.0
+// @version      1.5.0
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      MIT
@@ -16,8 +16,7 @@
   "use strict";
 
 
-  // Inject custom controls tightly if natively disabled via URL parameters (controls=0),
-  // or as a fallback if the standard player UI simply fails to render into the DOM.
+  // Initialize only if native controls are disabled or missing
   const isControlsDisabled = new URLSearchParams(window.location.search).get("controls") === "0";
   const isPlayButtonMissing = !document.querySelector(".ytp-play-button");
 
@@ -61,12 +60,36 @@
 
 
           #custom-mute-btn,
-          #custom-vol-slider,
-          #custom-stats-btn,
-          #custom-speed-btn {
+          #custom-vol-slider {
             z-index: 9999;
             position: fixed;
+          }
 
+          #custom-btn-group {
+            position: fixed;
+            bottom: 18px;
+            right: 18px;
+            display: flex;
+            gap: 0px;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            will-change: opacity;
+          }
+
+          #custom-btn-group.show {
+            opacity: 1;
+            pointer-events: auto;
+          }
+
+          #custom-mute-btn,
+          #custom-vol-slider,
+          #custom-stats-btn,
+          #custom-speed-btn,
+          #custom-screenshot-btn,
+          #custom-pip-btn,
+          #custom-url-btn {
             color: white;
             line-height: 1;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
@@ -75,9 +98,10 @@
           }
 
           #custom-stats-btn,
-          #custom-speed-btn {
-            bottom: 18px;
-
+          #custom-speed-btn,
+          #custom-screenshot-btn,
+          #custom-pip-btn,
+          #custom-url-btn {
             padding: 5px 12px;
             font-size: 13px;
             font-family: monospace;
@@ -86,33 +110,36 @@
             color: rgba(255, 255, 255, 0.9);
             background: rgba(0, 0, 0, 0.5) !important;
             border: 1px solid rgba(255, 255, 255, 0.35) !important;
-            border-radius: 5px;
+            border-radius: 0px;
+            margin-left: -1px;
 
             cursor: pointer;
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.3s, background 0.15s, transform 0.1s;
-            will-change: opacity;
+            /* No will-change: parent #custom-btn-group is already composited. */
+          }
+
+          #custom-url-btn {
+            border-top-left-radius: 5px !important;
+            border-bottom-left-radius: 5px !important;
+            margin-left: 0;
           }
 
           #custom-stats-btn {
-            right: 18px;
+            border-top-right-radius: 5px !important;
+            border-bottom-right-radius: 5px !important;
           }
 
-          #custom-speed-btn {
-            right: 80px;
-          }
-
-          #custom-stats-btn.show,
-          #custom-speed-btn.show {
+          #custom-btn-group.show button {
             opacity: 1;
             pointer-events: auto;
           }
 
-          #custom-stats-btn.show:hover,
-          #custom-speed-btn.show:hover {
+          #custom-btn-group.show button:hover {
             background: rgba(255, 255, 255, 0.18) !important;
             transform: scale(1.05);
+            z-index: 10;
           }
 
           #custom-stats-btn.active {
@@ -249,57 +276,55 @@
     const setVideoVolume = (v) => { isScriptChange = true; video.volume = v; isScriptChange = false; };
     const setVideoMuted = (m) => { isScriptChange = true; video.muted = m; isScriptChange = false; };
 
-    // Apply a volume change using targetVolume as the source of truth.
+    // Volume Adjustment Logic
     const applyVolume = (newVol) => {
       targetVolume = Math.min(1, Math.max(0, Math.round(newVol * 100) / 100));
       targetMuted = targetVolume === 0;
-      // Single muted call covers both mute and unmute.
       setVideoMuted(targetMuted);
       setVideoVolume(targetVolume);
       showVolumePercent(targetMuted ? 0 : targetVolume);
     };
 
-    // Shared mute toggle — avoids a synthetic DOM click event.
     const toggleMute = () => {
-      targetMuted = !video.muted;
+      targetMuted = !targetMuted;
       setVideoMuted(targetMuted);
-      muteBtn.classList.toggle("muted", video.muted);
-      showVolumePercent(video.muted ? 0 : targetVolume);
+      muteBtn.classList.toggle("muted", targetMuted);
+      showVolumePercent(targetMuted ? 0 : targetVolume);
     };
 
-    // Volume overlay UI
+    // Volume & Speed Overlays
     const volPct = Object.assign(document.createElement("div"), {
       id: "custom-vol-overlay"
     });
     let volTimeout;
     const showVolumePercent = (volume) => {
-      volPct.textContent = Math.round(volume * 100) + "%";
+      const text = Math.round(volume * 100) + "%";
+      if (volPct.textContent !== text) volPct.textContent = text;
       volPct.classList.add("show");
       clearTimeout(volTimeout);
       volTimeout = setTimeout(() => volPct.classList.remove("show"), 1500);
     };
 
-    // Speed overlay UI
     const speedOverlay = Object.assign(document.createElement("div"), {
       id: "custom-speed-overlay"
     });
     let speedTimeout;
     const showSpeedOverlay = (rate) => {
-      speedOverlay.textContent = rate + "x";
+      const text = rate + "x";
+      if (speedOverlay.textContent !== text) speedOverlay.textContent = text;
       speedOverlay.classList.add("show");
       clearTimeout(speedTimeout);
       speedTimeout = setTimeout(() => speedOverlay.classList.remove("show"), 1500);
     };
 
 
-    // Mute button.
     const muteBtn = Object.assign(document.createElement("button"), {
       id: "custom-mute-btn",
     });
 
     muteBtn.addEventListener("click", toggleMute);
 
-    // Volume slider.
+    // Volume Slider Control
     const vol = Object.assign(document.createElement("input"), {
       id: "custom-vol-slider",
       type: "range",
@@ -313,15 +338,16 @@
       applyVolume(Number(vol.value));
     });
 
-    // Sync slider and mute icon on any external volumechange.
-    // Guard with isScriptChange so our own writes don't trigger unnecessary DOM updates.
+    // Sync UI with external volume changes
     video.addEventListener("volumechange", () => {
       if (isScriptChange) return;
       muteBtn.classList.toggle("muted", video.muted);
-      vol.value = video.muted ? 0 : video.volume;
+      const expectedVol = video.muted ? 0 : video.volume;
+      if (Number(vol.value) !== expectedVol) {
+        vol.value = expectedVol;
+      }
     });
 
-    // Mouse wheel: scroll on speed button → change speed; anywhere else → change volume.
     let isHoveringSpeedBtn = false;
 
     window.addEventListener("wheel", (e) => {
@@ -333,10 +359,8 @@
       }
     }, { passive: false });
 
-    // Stats for nerds toggle (Shift + S or stats button)
+    // Stats for Nerds Toggle
     let isStatsOpen = false;
-
-    // Cache player element once — it never changes after load.
     const player = document.getElementById("movie_player") || document.querySelector(".html5-video-player");
 
     const statsBtn = Object.assign(document.createElement("button"), {
@@ -359,43 +383,135 @@
 
     statsBtn.addEventListener("click", toggleStats);
 
-    // Playback speed (< / > keys, or speed button)
+    // Playback Speed Controls
     const SPEED_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
     const SPEED_LAST_INDEX = SPEED_STEPS.length - 1;
-    const SPEED_DEFAULT_INDEX = 3; // index of 1x — compile-time constant
+    const SPEED_DEFAULT_INDEX = 3; // 1x
     let speedIndex = SPEED_DEFAULT_INDEX;
 
     const speedBtn = Object.assign(document.createElement("button"), {
       id: "custom-speed-btn",
-      title: "Playback Speed (< slower / > faster) or scroll wheel",
+      title: "Playback Speed (slower < or > faster) or scroll wheel",
       textContent: "1x",
     });
 
     const applySpeed = (index) => {
       speedIndex = Math.max(0, Math.min(SPEED_LAST_INDEX, index));
       const rate = SPEED_STEPS[speedIndex];
-      video.playbackRate = rate;
-      speedBtn.textContent = rate + "x";
-      speedBtn.classList.toggle("modified", rate !== 1);
+
+      if (video.playbackRate !== rate) video.playbackRate = rate;
+
+      const text = rate + "x";
+      if (speedBtn.textContent !== text) {
+        speedBtn.textContent = text;
+        speedBtn.classList.toggle("modified", rate !== 1);
+      }
       showSpeedOverlay(rate);
     };
 
     speedBtn.addEventListener("click", () => {
-      // Cycle forward; wrap back to 0 after the last step
       applySpeed(speedIndex < SPEED_LAST_INDEX ? speedIndex + 1 : 0);
     });
 
-    // Reset to 1x on right-click
     speedBtn.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       applySpeed(SPEED_DEFAULT_INDEX);
     });
 
-    // Track hover so the wheel handler knows which mode to use
     speedBtn.addEventListener("mouseenter", () => { isHoveringSpeedBtn = true; });
     speedBtn.addEventListener("mouseleave", () => { isHoveringSpeedBtn = false; });
 
-    // Merged keydown handler — one listener, covers all shortcuts + triggers showControls.
+    // Screenshot (Snap) Feature: Captures frame & copies to clipboard (Ctrl+Click to save)
+    const screenshotBtn = Object.assign(document.createElement("button"), {
+      id: "custom-screenshot-btn",
+      title: "Take Screenshot (Ctrl+Click to save locally)",
+      textContent: "📷 Snap",
+    });
+
+    screenshotBtn.addEventListener("click", (e) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d", { alpha: false }).drawImage(video, 0, 0);
+
+      const timeMs = Math.floor(video.currentTime * 1000);
+      const mins = Math.floor(timeMs / 60000).toString().padStart(2, '0');
+      const secs = Math.floor((timeMs % 60000) / 1000).toString().padStart(2, '0');
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+
+        if (e.ctrlKey) {
+          const objUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = objUrl;
+          a.download = `Screenshot_${mins}-${secs}.png`;
+          a.click();
+          URL.revokeObjectURL(objUrl);
+        }
+
+        if (navigator.clipboard) {
+          navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+            .then(() => {
+              const orig = screenshotBtn.textContent;
+              screenshotBtn.textContent = e.ctrlKey ? "✅ Saved & Copied!" : "✅ Copied!";
+              setTimeout(() => { screenshotBtn.textContent = orig; }, 1500);
+            })
+            .catch((err) => console.error("Clipboard copy failed:", err));
+        }
+      }, "image/png");
+    });
+
+    // Picture-in-Picture (PiP) Mode
+    const pipBtn = Object.assign(document.createElement("button"), {
+      id: "custom-pip-btn",
+      title: "Picture-in-Picture",
+      textContent: "🔲 PiP",
+    });
+
+    pipBtn.addEventListener("click", async () => {
+      try {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        } else {
+          await video.requestPictureInPicture();
+        }
+      } catch (err) {
+        console.error("PiP failed:", err);
+      }
+    });
+
+    // Copy Video URL (Ctrl+Click for timestamp)
+    const urlBtn = Object.assign(document.createElement("button"), {
+      id: "custom-url-btn",
+      title: "Copy Video URL (Ctrl+Click for current time)",
+      textContent: "🔗 URL",
+    });
+
+    urlBtn.addEventListener("click", async (e) => {
+      try {
+        let videoId = "";
+        if (player && typeof player.getVideoData === 'function') {
+          const data = player.getVideoData();
+          if (data && data.video_id) videoId = data.video_id;
+        }
+        if (!videoId) videoId = window.location.pathname.split('/').pop();
+
+        let url = `https://youtu.be/${videoId}`;
+        if (e.ctrlKey) url += `?t=${Math.floor(video.currentTime)}`;
+
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+          const originalText = urlBtn.textContent;
+          urlBtn.textContent = "✅ Copied!";
+          setTimeout(() => { urlBtn.textContent = originalText; }, 1500);
+        }
+      } catch (err) {
+        console.error("Copy URL failed:", err);
+      }
+    });
+
+    // Hotkey Management
     window.addEventListener("keydown", (e) => {
       switch (e.key) {
         case "ArrowUp":
@@ -430,45 +546,44 @@
           toggleMute();
           break;
       }
-      // Always show controls on any keypress (passive keydown listener removed).
       showControls();
     }, true);
 
-    // Auto-hide controls logic.
-    // mousemove throttle: only reset the hide-timer at most once per animation frame.
-    const ALL_CONTROLS = [muteBtn, vol, statsBtn, speedBtn];
+    const btnGroup = document.createElement("div");
+    btnGroup.id = "custom-btn-group";
+    btnGroup.append(urlBtn, screenshotBtn, pipBtn, speedBtn, statsBtn);
+
+    // UI Auto-hide Logic
+    const ALL_CONTROLS = [muteBtn, vol, btnGroup];
     let controlsTimeout;
     let controlsVisible = false;
-    let rafPending = false;
+    let lastInteractionTime = 0;
 
-    const hideControls = () => {
-      controlsVisible = false;
-      ALL_CONTROLS.forEach(el => el.classList.remove("show"));
+    const checkHideControls = () => {
+      const idleTime = Date.now() - lastInteractionTime;
+      if (idleTime >= 2000) {
+        controlsVisible = false;
+        ALL_CONTROLS.forEach(el => el.classList.remove("show"));
+      } else {
+        controlsTimeout = setTimeout(checkHideControls, 2000 - idleTime);
+      }
     };
+
     const showControls = () => {
+      lastInteractionTime = Date.now();
       if (!controlsVisible) {
         controlsVisible = true;
         ALL_CONTROLS.forEach(el => el.classList.add("show"));
+        clearTimeout(controlsTimeout);
+        controlsTimeout = setTimeout(checkHideControls, 2000);
       }
-      clearTimeout(controlsTimeout);
-      controlsTimeout = setTimeout(hideControls, 2000);
-    };
-    const onMouseMove = () => {
-      if (rafPending) return;
-      rafPending = true;
-      requestAnimationFrame(() => {
-        rafPending = false;
-        showControls();
-      });
     };
 
-    window.addEventListener("mousemove", onMouseMove);
-    // wheel already calls showControls() inline via the wheel handler above.
-    showControls(); // Show immediately on load
+    window.addEventListener("mousemove", showControls);
+    showControls();
 
-    // Double click to fullscreen
     window.addEventListener("dblclick", (e) => {
-      if (e.target.closest("#custom-mute-btn, #custom-vol-slider, #custom-stats-btn, #custom-speed-btn")) return;
+      if (e.target.closest("#custom-btn-group, #custom-mute-btn, #custom-vol-slider")) return;
 
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(() => { });
@@ -477,8 +592,7 @@
       }
     });
 
-    // Add all elements.
-    document.body.prepend(volPct, speedOverlay, vol, muteBtn, statsBtn, speedBtn);
+    document.body.prepend(volPct, speedOverlay, vol, muteBtn, btnGroup);
 
 
   }

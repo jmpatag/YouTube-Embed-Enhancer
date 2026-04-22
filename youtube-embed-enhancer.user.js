@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      1.5.1
+// @version      1.5.2
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      MIT
@@ -271,7 +271,6 @@
       Object.defineProperty(video, 'volume', {
         get() { return originalVolume.get.call(this); },
         set(newVol) {
-          if (!isScriptChange) return;
           originalVolume.set.call(this, newVol);
         }
       });
@@ -279,15 +278,32 @@
       Object.defineProperty(video, 'muted', {
         get() { return originalMuted.get.call(this); },
         set(newMuted) {
-          if (!isScriptChange) return;
           originalMuted.set.call(this, newMuted);
         }
       });
 
-      const setVideoVolume = (v) => { isScriptChange = true; video.volume = v; isScriptChange = false; };
-      const setVideoMuted = (m) => { isScriptChange = true; video.muted = m; isScriptChange = false; };
+      const setVideoVolume = (v) => {
+        isScriptChange = true;
+        if (player && typeof player.setVolume === 'function') {
+          player.setVolume(Math.round(v * 100));
+        } else {
+          video.volume = v;
+        }
+        isScriptChange = false;
+      };
+      const setVideoMuted = (m) => {
+        isScriptChange = true;
+        if (m && player && typeof player.mute === 'function') {
+          player.mute();
+        } else if (!m && player && typeof player.unMute === 'function') {
+          player.unMute();
+        } else {
+          video.muted = m;
+        }
+        isScriptChange = false;
+      };
 
-      // Volume Adjustment Logic
+      // Volume Adjustment
       const applyVolume = (newVol) => {
         targetVolume = Math.min(1, Math.max(0, Math.round(newVol * 100) / 100));
         targetMuted = targetVolume === 0;
@@ -349,13 +365,14 @@
         applyVolume(Number(vol.value));
       });
 
-      // Sync UI with external volume changes
       video.addEventListener("volumechange", () => {
         if (isScriptChange) return;
-        muteBtn.classList.toggle("muted", video.muted);
-        const expectedVol = video.muted ? 0 : video.volume;
-        if (Number(vol.value) !== expectedVol) {
-          vol.value = expectedVol;
+        targetMuted = video.muted;
+        targetVolume = video.muted ? targetVolume : video.volume;
+        muteBtn.classList.toggle("muted", targetMuted);
+        const displayVol = targetMuted ? 0 : targetVolume;
+        if (Number(vol.value) !== displayVol) {
+          vol.value = displayVol;
         }
       });
 
@@ -570,7 +587,7 @@
       btnGroup.id = "custom-btn-group";
       btnGroup.append(urlBtn, screenshotBtn, pipBtn, speedBtn, statsBtn);
 
-      // UI Auto-hide Logic
+      // UI Auto-hide
       const ALL_CONTROLS = [muteBtn, vol, btnGroup];
       let controlsTimeout;
       let controlsVisible = false;
@@ -596,7 +613,13 @@
         }
       };
 
-      window.addEventListener("mousemove", showControls);
+      let lastMouseTime = 0;
+      window.addEventListener("mousemove", () => {
+        const now = Date.now();
+        if (now - lastMouseTime < 100) return;
+        lastMouseTime = now;
+        showControls();
+      });
       showControls();
 
       window.addEventListener("dblclick", (e) => {

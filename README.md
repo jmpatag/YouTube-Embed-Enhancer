@@ -72,6 +72,7 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ### 🌓 Appearance Settings
 - **High Contrast**: Solid buttons for better visibility against bright or busy video backgrounds.
+- **High Contrast**: Solid buttons for better visibility against bright or busy video backgrounds.
 - **Compact Mode**: Toggle between text labels or icons only.
 - **Hide/Expand Toggle**: Click the `>` button to collapse the UI (hides everything except Settings).
 

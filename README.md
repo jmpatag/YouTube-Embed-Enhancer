@@ -6,12 +6,15 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ---
 
-## ✨ New in v2.1.0
+## ✨ New in v2.2.0
 
 - **🎬 Video Clipping**: Record WebM clips to share or save for later.
 - **🔊 Volume Boost**: Boost volume up to 3x for quiet videos.
 - **📊 Mini Stats**: See buffer and lag info quickly with Ctrl + Click.
-- **⚙️ UI & Settings**: Added High Contrast and Compact modes, plus a cleaner settings menu.
+- **📱 Compact Mode**: Icons-only interface **optimized for multiple POV streams** (Multiview).
+- **🌓 High Contrast Mode**: Solid button styles for better visibility against bright or busy video backgrounds.
+- **↔️ Hide/Expand Toggle**: Collapse the UI to hide everything except the toggle and settings buttons.
+- **⚙️ Redesigned Settings**: A cleaner, more intuitive configuration menu.
 - **🛠️ Bug Fixes**: General fixes and performance improvements.
 
 ---
@@ -68,8 +71,9 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 - Click the **PiP button** (bottom-right corner) to pop the video out.
 
 ### 🌓 Appearance Settings
-- **High Contrast**: Solid buttons for better visibility on light themes.
+- **High Contrast**: Solid buttons for better visibility against bright or busy video backgrounds.
 - **Compact Mode**: Toggle between text labels or icons only.
+- **Hide/Expand Toggle**: Click the `>` button to collapse the UI (hides everything except Settings).
 
 ### 🔗 Copy Video URL
 - Click the **URL button** to copy the video link.

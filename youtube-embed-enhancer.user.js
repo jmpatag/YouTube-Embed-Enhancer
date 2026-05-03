@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.1.0
+// @version      2.2.0
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      GPL-3.0
@@ -221,6 +221,16 @@ player-fullscreen-action-menu { display: none !important; }
   will-change: opacity;
 }
 #custom-btn-group.show { opacity: 1; pointer-events: auto; }
+#custom-btn-group.collapsed #custom-wl-btn,
+#custom-btn-group.collapsed #custom-url-btn,
+#custom-btn-group.collapsed #custom-screenshot-btn,
+#custom-btn-group.collapsed #custom-clip-btn,
+#custom-btn-group.collapsed #custom-pip-btn,
+#custom-btn-group.collapsed #custom-speed-btn,
+#custom-btn-group.collapsed #custom-stats-btn {
+  display: none !important;
+}
+#custom-btn-group.collapsed { gap: 4px; }
 
 /* Shared button base */
 #custom-wl-btn,
@@ -230,6 +240,7 @@ player-fullscreen-action-menu { display: none !important; }
 #custom-pip-btn,
 #custom-speed-btn,
 #custom-stats-btn,
+#custom-toggle-btn,
 #custom-settings-btn {
   display: flex;
   align-items: center;
@@ -260,7 +271,8 @@ player-fullscreen-action-menu { display: none !important; }
 #custom-btn-group.show #custom-pip-btn,
 #custom-btn-group.show #custom-speed-btn,
 #custom-btn-group.show #custom-stats-btn,
-#custom-btn-group.show #custom-settings-btn {
+#custom-toggle-btn,
+#custom-settings-btn {
   opacity: 1; pointer-events: auto;
 }
 #custom-btn-group.show #custom-wl-btn:hover,
@@ -283,6 +295,7 @@ player-fullscreen-action-menu { display: none !important; }
 #custom-clip-btn,
 #custom-pip-btn,
 #custom-stats-btn,
+#custom-toggle-btn,
 #custom-settings-btn {
   width: var(--ytee-btn-size);
   height: var(--ytee-btn-size);
@@ -302,6 +315,7 @@ player-fullscreen-action-menu { display: none !important; }
 #custom-clip-btn .ytee-icon,
 #custom-pip-btn .ytee-icon,
 #custom-stats-btn .ytee-icon,
+#custom-toggle-btn .ytee-icon,
 #custom-settings-btn .ytee-icon,
 #custom-speed-btn .ytee-icon { display: flex; }
 
@@ -313,6 +327,7 @@ player-fullscreen-action-menu { display: none !important; }
 #custom-pip-btn .ytee-label,
 #custom-speed-btn .ytee-label,
 #custom-stats-btn .ytee-label,
+#custom-toggle-btn .ytee-label,
 #custom-settings-btn .ytee-label { display: none; }
 
 /* Tooltips — shown in icon mode only */
@@ -323,6 +338,7 @@ player-fullscreen-action-menu { display: none !important; }
 #custom-pip-btn::after,
 #custom-speed-btn::after,
 #custom-stats-btn::after,
+#custom-toggle-btn::after,
 #custom-settings-btn::after {
   content: attr(data-tip);
   position: absolute;
@@ -567,6 +583,8 @@ player-fullscreen-action-menu { display: none !important; }
     stats: () => mkSvgEl({ tag: 'path', attrs: { d: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z' } }),
     settings: () => mkSvgEl({ tag: 'path', attrs: { d: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z' } }),
     speed: () => mkSvgEl({ tag: 'path', attrs: { d: 'M10 8v8l6-4-6-4zm6.5-4.5l-1.5 1.5C16.78 6.76 18 9.24 18 12s-1.22 5.24-3 6.99l1.5 1.5C18.77 18.12 20 15.2 20 12s-1.23-6.12-3.5-8.5zM7.5 5.5L6 4C3.23 6.38 2 9.3 2 12s1.23 5.62 4 8l1.5-1.5C5.22 16.76 4 14.29 4 12s1.22-5.24 3.5-6.5z' } }),
+    hide: () => mkSvgEl({ tag: 'path', attrs: { d: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z' } }),
+    expand: () => mkSvgEl({ tag: 'path', attrs: { d: 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z' } }),
   };
 
   const mkBtn = (id, iconKey, labelText, tipText, titleText) => {
@@ -620,6 +638,7 @@ player-fullscreen-action-menu { display: none !important; }
     clipDurationCtrl: 300,
     preferredQuality: 'auto',
     compactMode: false,
+    isCollapsed: false,
     highContrastUI: false,
   };
 
@@ -653,6 +672,7 @@ player-fullscreen-action-menu { display: none !important; }
       clipDurationCtrl: typeof s.clipDurationCtrl === 'number' ? Math.min(300, Math.max(1, s.clipDurationCtrl)) : defaultSettings.clipDurationCtrl,
       preferredQuality: typeof s.preferredQuality === 'string' ? s.preferredQuality : defaultSettings.preferredQuality,
       compactMode: typeof s.compactMode === 'boolean' ? s.compactMode : (typeof s.labelMode === 'boolean' ? !s.labelMode : defaultSettings.compactMode),
+      isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : defaultSettings.isCollapsed,
       highContrastUI: typeof s.highContrastUI === 'boolean' ? s.highContrastUI : defaultSettings.highContrastUI,
     };
   };
@@ -660,6 +680,19 @@ player-fullscreen-action-menu { display: none !important; }
   const applyUIStates = (settings) => {
     document.documentElement.dataset.yteeLabels = settings.compactMode ? '0' : '1';
     document.documentElement.dataset.yteeHighContrast = settings.highContrastUI ? '1' : '0';
+    const group = document.getElementById('custom-btn-group');
+    if (group) {
+      group.classList.toggle('collapsed', !!settings.isCollapsed);
+      const tBtn = document.getElementById('custom-toggle-btn');
+      if (tBtn) {
+        const iconSpan = tBtn.querySelector('.ytee-icon');
+        if (iconSpan) {
+          while (iconSpan.firstChild) iconSpan.removeChild(iconSpan.firstChild);
+          iconSpan.appendChild(ICON_DEFS[settings.isCollapsed ? 'expand' : 'hide']());
+        }
+        setBtnLabel(tBtn, settings.isCollapsed ? 'Expand' : 'Hide');
+      }
+    }
   };
 
   currentSettings = normalizeSettings(currentSettings);
@@ -1517,9 +1550,16 @@ player-fullscreen-action-menu { display: none !important; }
       }
     }, true);
 
+    const toggleBtn = mkBtn('custom-toggle-btn', currentSettings.isCollapsed ? 'expand' : 'hide', currentSettings.isCollapsed ? 'Expand' : 'Hide', 'Hide/Show controls', 'Toggle UI visibility');
+    toggleBtn.addEventListener('click', () => {
+      currentSettings.isCollapsed = !currentSettings.isCollapsed;
+      saveStoredSettings(currentSettings);
+      applyUIStates(currentSettings);
+    });
+
     const btnGroup = document.createElement("div");
     btnGroup.id = "custom-btn-group";
-    btnGroup.append(wlBtn, urlBtn, screenshotBtn, clipBtn, pipBtn, speedBtn, statsBtn, settingsBtn);
+    btnGroup.append(toggleBtn, wlBtn, urlBtn, screenshotBtn, clipBtn, pipBtn, speedBtn, statsBtn, settingsBtn);
     updateButtonVisibility();
 
     let isHoveringBtnGroup = false;

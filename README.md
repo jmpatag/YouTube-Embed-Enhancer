@@ -15,6 +15,7 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 - **🌓 High Contrast Mode**: Solid button styles for better visibility against bright or busy video backgrounds.
 - **↔️ Hide/Expand Toggle**: Collapse the UI to hide everything except the toggle and settings buttons.
 - **⚙️ Redesigned Settings**: A cleaner, more intuitive configuration menu.
+- **📐 Responsive Scaling**: UI elements now dynamically scale based on the video player size (use Compact Mode if the UI still looks too large).
 - **🛠️ Bug Fixes**: General fixes and performance improvements.
 
 ---

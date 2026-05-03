@@ -35,7 +35,7 @@
   --ytee-ew: 800px;
 
   /* Sizing */
-  --ytee-btn-size: clamp(27.5px, calc(var(--ytee-ew) * 0.04), 37.5px);
+  --ytee-btn-size: clamp(25.5px, calc(var(--ytee-ew) * 0.04), 37.5px);
   --ytee-icon-size: clamp(15px, calc(var(--ytee-ew) * 0.0225), 21px);
   --ytee-font-size: clamp(11px,  calc(var(--ytee-ew) * 0.0175), 15px);
   --ytee-gap: clamp(2.5px,  calc(var(--ytee-ew) * 0.00375), 5px);
@@ -1431,8 +1431,14 @@ player-fullscreen-action-menu { display: none !important; }
 
     saveBtn.addEventListener('click', () => {
       const newSettings = { buttons: {}, hotkeys: {} };
-      Object.keys(currentSettings.buttons).forEach(key => { newSettings.buttons[key] = document.getElementById(`btn-${key}`).checked; });
-      Object.keys(currentSettings.hotkeys).forEach(key => { newSettings.hotkeys[key] = sanitizeHotkeyInput(document.getElementById(`hk-${key}`).value); });
+      Object.keys(defaultSettings.buttons).forEach(key => {
+        const el = document.getElementById(`btn-${key}`);
+        if (el) newSettings.buttons[key] = el.checked;
+      });
+      Object.keys(defaultSettings.hotkeys).forEach(key => {
+        const el = document.getElementById(`hk-${key}`);
+        if (el) newSettings.hotkeys[key] = sanitizeHotkeyInput(el.value);
+      });
       newSettings.volumeBoostLevel = Number(document.getElementById('volume-boost-level').value) || 1;
       newSettings.enableVolumeBoost = document.getElementById('ytee-enable-volume-boost').checked;
       newSettings.clipDuration = Math.min(300, Math.max(1, Number(document.getElementById('clip-duration').value) || 5));
@@ -1440,6 +1446,7 @@ player-fullscreen-action-menu { display: none !important; }
       newSettings.preferredQuality = document.getElementById('preferred-quality').value || 'auto';
       newSettings.compactMode = document.getElementById('ytee-compact-mode').checked;
       newSettings.highContrastUI = document.getElementById('ytee-high-contrast').checked;
+      newSettings.isCollapsed = currentSettings.isCollapsed;
       currentSettings = newSettings;
       saveStoredSettings(currentSettings);
       buildHotkeyMap();

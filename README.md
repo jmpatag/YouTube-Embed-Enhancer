@@ -6,6 +6,16 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ---
 
+## ✨ New in v2.1.0
+
+- **🎬 Video Clipping**: Record WebM clips to share or save for later.
+- **🔊 Volume Boost**: Boost volume up to 3x for quiet videos.
+- **📊 Mini Stats**: See buffer and lag info quickly with Ctrl + Click.
+- **⚙️ UI & Settings**: Added High Contrast and Compact modes, plus a cleaner settings menu.
+- **🛠️ Bug Fixes**: General fixes and performance improvements.
+
+---
+
 ## ✨ New in v2.0.0
 
 - **⚙️ Settings Menu**: A brand new configuration interface to toggle button visibility and customize hotkeys.
@@ -28,6 +38,10 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 - Or **scroll your mouse wheel** while hovering over the video.
 - **Visual feedback overlay** showing exact volume percentage.
 
+### 🔊 Volume Boost
+- **Boost volume up to 3x** in settings.
+- Good for quiet streams or balancing audio.
+
 ### 🕒 Watch Later
 - Click the **WL button** to save the video to your YouTube Watch Later list.
 - Works even in embeds where the native button is hidden.
@@ -44,16 +58,26 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 - **Ctrl + Click** → Save locally as PNG and copy to clipboard.
 - **Smart Filenames**: Automatically named as `ChannelName_MM-SS-mmm.png`.
 
+### 🎬 Video Clipping
+- **Record WebM clips** from the video.
+- **Ctrl + Click** for longer clips (5 minutes).
+- Duration is configurable in settings.
+- *Note: Higher resolutions require more system resources.*
+
 ### 🖼️ Picture-in-Picture (PiP)
 - Click the **PiP button** (bottom-right corner) to pop the video out.
+
+### 🌓 Appearance Settings
+- **High Contrast**: Solid buttons for better visibility on light themes.
+- **Compact Mode**: Toggle between text labels or icons only.
 
 ### 🔗 Copy Video URL
 - Click the **URL button** to copy the video link.
 - **Ctrl + Click** → Copy link with the **current timestamp** included.
 
 ### 📊 Advanced (Stats for Nerds)
-- Press **Shift + S** (configurable) or click the **Stats button**.
-- Instantly toggle YouTube's "Stats for Nerds" overlay.
+- Press **Shift + S** or click the **Stats button**.
+- **Ctrl + Click** for a tiny overlay showing buffer and lag info.
 
 ---
 

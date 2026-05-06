@@ -6,6 +6,16 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ---
 
+## ✨ New in v2.3.0
+
+- **Persistent Volume**: now remembers the volume for your last 10 videos, so you won't need to re-adjust after a tab refresh.
+- **playback speed**: changed playback speed to be more precise.
+- **Volume Control Visibility**: can now be toggled on/off on settings menu.
+- **Color-Coded Dropped Frames**: Mini Stats overlay now color-codes dropped frames (Blue to Red)
+- **Button Visibility Fix**: Fixed an issue where the PiP and Stats buttons wouldn't hide when disabled in settings.
+
+---
+
 ## ✨ New in v2.2.0
 
 - **🎬 Video Clipping**: Record WebM clips to share or save for later.

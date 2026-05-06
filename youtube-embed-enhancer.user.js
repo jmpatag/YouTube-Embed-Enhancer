@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.2.0
+// @version      2.3.0
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      GPL-3.0
@@ -389,10 +389,6 @@ player-fullscreen-action-menu { display: none !important; }
 [data-ytee-labels="1"] #custom-speed-btn .ytee-label,
 [data-ytee-labels="1"] #custom-stats-btn .ytee-label { display: inline; }
 
-/* In label mode, always show PiP + Stats */
-[data-ytee-labels="1"] #custom-pip-btn,
-[data-ytee-labels="1"] #custom-stats-btn { display: flex !important; }
-
 /* In label mode, always show icons inside buttons (icon+label together) */
 [data-ytee-labels="1"] #custom-wl-btn .ytee-icon,
 [data-ytee-labels="1"] #custom-url-btn .ytee-icon,
@@ -553,6 +549,35 @@ player-fullscreen-action-menu { display: none !important; }
 .ytee-quality-select:focus { outline:none; background-color:rgba(119,221,255,0.06); border-color:rgba(119,221,255,0.5); box-shadow:0 0 0 3px rgba(119,221,255,0.1); }
 .ytee-quality-select option { background:#1a1a22; color:white; }
 .ytee-quality-note { display:block; font-size:11px; color:rgba(255,255,255,0.3); margin:4px 14px 12px; line-height:1.4; font-style:italic; }
+
+/* Info Button and Box */
+.ytee-info-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.4); cursor: pointer; transition: all 0.15s;
+  flex-shrink: 0;
+}
+.ytee-info-btn:hover { background: rgba(119,221,255,0.12); border-color: rgba(119,221,255,0.35); color: #7ddeff; }
+.ytee-info-box {
+  margin: 4px 10px 14px; padding: 12px 14px;
+  background: rgba(15, 15, 20, 0.45); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; font-size: 11.5px; line-height: 1.6; color: rgba(255,255,255,0.55);
+  display: none; animation: ytee-modal-in 0.2s ease-out;
+}
+.ytee-info-box.show { display: block; }
+.ytee-info-box strong { color: rgba(119,221,255,0.9); font-weight: 700; margin-right: 4px; font-family: ui-monospace, monospace; }
+.ytee-info-box p { margin: 0 0 10px; }
+.ytee-info-box p:last-child { margin-bottom: 4px; }
+.ytee-info-link { display: inline-block; color: #7ddeff; text-decoration: none; font-size: 10px; opacity: 0.5; transition: opacity 0.2s; margin-top: 4px; }
+.ytee-info-link:hover { opacity: 0.9; text-decoration: underline; }
+
+#ytee-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
 `
     })
   );
@@ -585,6 +610,7 @@ player-fullscreen-action-menu { display: none !important; }
     speed: () => mkSvgEl({ tag: 'path', attrs: { d: 'M10 8v8l6-4-6-4zm6.5-4.5l-1.5 1.5C16.78 6.76 18 9.24 18 12s-1.22 5.24-3 6.99l1.5 1.5C18.77 18.12 20 15.2 20 12s-1.23-6.12-3.5-8.5zM7.5 5.5L6 4C3.23 6.38 2 9.3 2 12s1.23 5.62 4 8l1.5-1.5C5.22 16.76 4 14.29 4 12s1.22-5.24 3.5-6.5z' } }),
     hide: () => mkSvgEl({ tag: 'path', attrs: { d: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z' } }),
     expand: () => mkSvgEl({ tag: 'path', attrs: { d: 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z' } }),
+    info: () => mkSvgEl({ tag: 'path', attrs: { d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z' } }),
   };
 
   const mkBtn = (id, iconKey, labelText, tipText, titleText) => {
@@ -621,7 +647,7 @@ player-fullscreen-action-menu { display: none !important; }
 
   // Settings
   const defaultSettings = {
-    buttons: { wl: true, url: true, screenshot: true, clip: true, pip: true, speed: true, stats: true },
+    buttons: { wl: true, url: true, screenshot: true, clip: true, pip: true, speed: true, stats: true, vol: true },
     hotkeys: {
       toggleMute: 'm',
       toggleStats: 'shift+s',
@@ -640,6 +666,8 @@ player-fullscreen-action-menu { display: none !important; }
     compactMode: false,
     isCollapsed: false,
     highContrastUI: false,
+    playbackSpeed: 1,
+    volumeCache: {},
   };
 
   const loadStoredSettings = () => {
@@ -662,7 +690,7 @@ player-fullscreen-action-menu { display: none !important; }
 
   const normalizeSettings = (s) => {
     if (!s || typeof s !== 'object') return JSON.parse(JSON.stringify(defaultSettings));
-    return {
+    const rs = {
       buttons: Object.assign({}, defaultSettings.buttons, s.buttons),
       hotkeys: Object.assign({}, defaultSettings.hotkeys, s.hotkeys),
       volumeBoostLevel: typeof s.volumeBoostLevel === 'number' ? s.volumeBoostLevel
@@ -674,7 +702,15 @@ player-fullscreen-action-menu { display: none !important; }
       compactMode: typeof s.compactMode === 'boolean' ? s.compactMode : (typeof s.labelMode === 'boolean' ? !s.labelMode : defaultSettings.compactMode),
       isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : defaultSettings.isCollapsed,
       highContrastUI: typeof s.highContrastUI === 'boolean' ? s.highContrastUI : defaultSettings.highContrastUI,
+      playbackSpeed: typeof s.playbackSpeed === 'number' ? Math.min(16, Math.max(0.1, s.playbackSpeed)) : defaultSettings.playbackSpeed,
+      volumeCache: typeof s.volumeCache === 'object' ? s.volumeCache : defaultSettings.volumeCache,
     };
+    // memory remembers 10
+    const keys = Object.keys(rs.volumeCache);
+    if (keys.length > 10) {
+      keys.slice(0, keys.length - 10).forEach(k => delete rs.volumeCache[k]);
+    }
+    return rs;
   };
 
   const applyUIStates = (settings) => {
@@ -826,6 +862,14 @@ player-fullscreen-action-menu { display: none !important; }
       applyAudioState(clamped, clamped === 0);
       vol.value = clamped;
       showVolumePercent(clamped === 0 ? 0 : clamped);
+
+      //memory
+      const p = getPlayer();
+      const vid = p?.getVideoData?.().video_id;
+      if (vid) {
+        currentSettings.volumeCache[vid] = clamped;
+        saveStoredSettings(currentSettings);
+      }
     };
 
     const toggleMute = () => {
@@ -924,26 +968,31 @@ player-fullscreen-action-menu { display: none !important; }
       const quality = (typeof video.getVideoPlaybackQuality === 'function') ? video.getVideoPlaybackQuality() : null;
       const buffer = stats ? stats.buffer_health : (video.buffered.length > 0 ? (video.buffered.end(video.buffered.length - 1) - video.currentTime).toFixed(2) : '0.00');
 
-      let latency = stats?.latency || stats?.live_latency || stats?.latency_ms;
-      if (!latency && stats) {
-        for (let k in stats) {
-          if (k.toLowerCase().includes('latency')) { latency = stats[k]; break; }
-        }
+      let latency = null;
+      if (stats) {
+        if (typeof stats.latency === 'number') latency = stats.latency;
+        else if (typeof stats.latency_ms === 'number') latency = stats.latency_ms / 1000;
+        else if (typeof stats.live_latency === 'number') latency = stats.live_latency;
       }
-      if (!latency && typeof p.getVideoData === 'function' && p.getVideoData().isLive) {
-        const playerDuration = (typeof p.getDuration === 'function') ? p.getDuration() : 0;
-        if (playerDuration > 0) latency = Math.max(0, playerDuration - video.currentTime);
+      if (latency == null && p.getVideoData?.().isLive) {
+        const liveEdge = p.getDuration?.();
+        const current = video.currentTime;
+        if (liveEdge > 0) latency = Math.max(0, liveEdge - current);
       }
 
-      if (typeof latency === 'number') {
-        if (latency > 100) latency = latency / 1000;
-        latency = latency.toFixed(2);
-      }
-      const dropped = quality ? quality.droppedVideoFrames : '0';
+      const formattedLatency = latency != null ? Number(latency).toFixed(2) : 'N/A';
+      const dropped = quality ? quality.droppedVideoFrames : 0;
+      const dCount = Number(dropped);
+      let dColor = '';
+      if (dCount > 0 && dCount <= 100) dColor = '#3498db';
+      else if (dCount > 100 && dCount <= 250) dColor = '#f1c40f';
+      else if (dCount > 250 && dCount <= 350) dColor = '#e67e22';
+      else if (dCount > 350) dColor = '#e74c3c';
 
       miniStatsParts.buffer.textContent = buffer != null ? buffer + 's' : 'N/A';
-      miniStatsParts.latency.textContent = latency != null ? latency + 's' : 'N/A';
-      miniStatsParts.dropped.textContent = dropped != null ? dropped : 'N/A';
+      miniStatsParts.latency.textContent = formattedLatency !== 'N/A' ? formattedLatency + 's' : 'N/A';
+      miniStatsParts.dropped.textContent = dropped;
+      miniStatsParts.dropped.style.color = dColor;
 
       miniStatsTimer = setTimeout(updateMiniStats, 1000);
     };
@@ -966,7 +1015,7 @@ player-fullscreen-action-menu { display: none !important; }
     statsBtn.addEventListener("click", toggleStats);
 
     // Speed
-    const SPEED_MIN = 0.25, SPEED_MAX = 2, SPEED_STEP = 0.1, SPEED_STEP_FINE = 0.05, SPEED_DEFAULT = 1;
+    const SPEED_MIN = 0.1, SPEED_MAX = 16, SPEED_STEP = 0.05, SPEED_STEP_FINE = 0.01, SPEED_DEFAULT = 1;
     let targetSpeed = Math.round((video.playbackRate || SPEED_DEFAULT) * 100) / 100;
 
     const speedBtn = mkBtn('custom-speed-btn', 'speed', targetSpeed + 'x', 'Speed', 'Playback Speed');
@@ -981,6 +1030,8 @@ player-fullscreen-action-menu { display: none !important; }
       updateSpeedBtnText(targetSpeed);
       speedBtn.classList.toggle("modified", targetSpeed !== 1);
       showSpeedOverlay(targetSpeed);
+      const speedInput = document.getElementById('ytee-precise-speed');
+      if (speedInput && parseFloat(speedInput.value) !== targetSpeed) speedInput.value = targetSpeed;
     };
 
     speedBtn.addEventListener("click", (e) => {
@@ -1273,6 +1324,13 @@ player-fullscreen-action-menu { display: none !important; }
       } catch (err) { console.error("Watch Later failed:", err); setBtnLabel(wlBtn, '✗ Err'); flashBtnState(wlBtn, 'error'); setTimeout(() => setBtnLabel(wlBtn, 'WL'), 1500); }
     });
 
+    const toggleBtn = mkBtn('custom-toggle-btn', currentSettings.isCollapsed ? 'expand' : 'hide', currentSettings.isCollapsed ? 'Expand' : 'Hide', 'Hide/Show controls', 'Toggle UI visibility');
+    toggleBtn.addEventListener('click', () => {
+      currentSettings.isCollapsed = !currentSettings.isCollapsed;
+      saveStoredSettings(currentSettings);
+      applyUIStates(currentSettings);
+    });
+
     // Settings Modal
     const settingsBtn = mkBtn('custom-settings-btn', 'settings', 'Settings', 'Settings', 'Settings');
     const settingsModal = document.createElement("div");
@@ -1280,7 +1338,32 @@ player-fullscreen-action-menu { display: none !important; }
     let isSettingsOpen = false;
     const settingsContent = document.createElement("div");
     settingsContent.id = "custom-settings-content";
+    const settingsHeader = Object.assign(document.createElement("div"), { id: "ytee-settings-header" });
     const settingsTitle = Object.assign(document.createElement("h2"), { textContent: "YouTube Embed Enhancer" });
+    const infoBtn = Object.assign(document.createElement('div'), { className: 'ytee-info-btn', title: 'What do these stats mean?' });
+    infoBtn.appendChild(ICON_DEFS.info());
+    settingsHeader.append(settingsTitle, infoBtn);
+
+    const infoBox = Object.assign(document.createElement('div'), { className: 'ytee-info-box' });
+    const mkInfoRow = (title, text) => {
+      const p = document.createElement('p');
+      const s = document.createElement('strong'); s.textContent = title;
+      p.append(s, document.createTextNode(' ' + text));
+      return p;
+    };
+    infoBox.append(
+      mkInfoRow('Buffer', 'Seconds of video data pre-downloaded. Acts as a safety cushion; higher is more stable.'),
+      mkInfoRow('Latency', "Measures the network delay between your player and YouTube's servers. Note: YouTube's 'Live Latency' (Stats for Nerds) is the total delay from the streamer (e.g. mikochi did a pon if live latency is 6 secs then it will take 6 secs for the viewers to see it) to your screen."),
+      mkInfoRow('Drop', 'Frames that failed to display. Ideally zero; if rising, your device is struggling to keep up with the resolution.'),
+      Object.assign(document.createElement('a'), {
+        href: 'https://github.com/jmpatag/YouTube-Embed-Enhancer',
+        target: '_blank',
+        className: 'ytee-info-link',
+        textContent: 'Source: YouTube Embed Enhancer (GitHub)'
+      })
+    );
+    infoBtn.addEventListener('click', () => infoBox.classList.toggle('show'));
+
     const settingsSubtitle = Object.assign(document.createElement("p"), { id: "ytee-settings-subtitle", textContent: "Customize your embed experience" });
     const settingsItems = Object.assign(document.createElement("div"), { id: "custom-settings-items" });
     const settingsButtons = Object.assign(document.createElement("div"), { id: "custom-settings-buttons" });
@@ -1288,7 +1371,7 @@ player-fullscreen-action-menu { display: none !important; }
     const cancelBtn = Object.assign(document.createElement("button"), { id: "custom-settings-cancel", textContent: "Cancel" });
     const saveBtn = Object.assign(document.createElement("button"), { id: "custom-settings-save", textContent: "Save" });
     settingsButtons.append(restoreBtn, cancelBtn, saveBtn);
-    settingsContent.append(settingsTitle, settingsSubtitle, settingsItems, settingsButtons);
+    settingsContent.append(settingsHeader, settingsSubtitle, infoBox, settingsItems, settingsButtons);
     settingsModal.appendChild(settingsContent);
     document.body.appendChild(settingsModal);
 
@@ -1359,20 +1442,16 @@ player-fullscreen-action-menu { display: none !important; }
 
       const clipDurDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
       const clipDurLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration', textContent: 'Duration (seconds)' });
-      const clipDurInput = Object.assign(document.createElement('input'), { type: 'range', id: 'clip-duration', min: '1', max: '300', step: '1', value: currentSettings.clipDuration });
-      clipDurInput.style.width = '140px';
-      const clipDurValue = Object.assign(document.createElement('span'), { className: 'ytee-slider-value', textContent: `${currentSettings.clipDuration}s` });
-      clipDurInput.addEventListener('input', () => { clipDurValue.textContent = `${clipDurInput.value}s`; });
-      clipDurDiv.append(clipDurLabel, clipDurInput, clipDurValue);
+      const clipDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration', min: '1', max: '300', step: '1', value: currentSettings.clipDuration, className: 'hk-input' });
+      clipDurInput.style.width = '80px';
+      clipDurDiv.append(clipDurLabel, clipDurInput);
       items.appendChild(clipDurDiv);
 
       const clipCtrlDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
       const clipCtrlLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration-ctrl', textContent: 'Ctrl+Click duration (seconds)' });
-      const clipCtrlInput = Object.assign(document.createElement('input'), { type: 'range', id: 'clip-duration-ctrl', min: '1', max: '300', step: '1', value: currentSettings.clipDurationCtrl });
-      clipCtrlInput.style.width = '140px';
-      const clipCtrlValue = Object.assign(document.createElement('span'), { className: 'ytee-slider-value', textContent: `${currentSettings.clipDurationCtrl}s` });
-      clipCtrlInput.addEventListener('input', () => { clipCtrlValue.textContent = `${clipCtrlInput.value}s`; });
-      clipCtrlDiv.append(clipCtrlLabel, clipCtrlInput, clipCtrlValue);
+      const clipCtrlInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration-ctrl', min: '1', max: '300', step: '1', value: currentSettings.clipDurationCtrl, className: 'hk-input' });
+      clipCtrlInput.style.width = '80px';
+      clipCtrlDiv.append(clipCtrlLabel, clipCtrlInput);
       items.appendChild(clipCtrlDiv);
       items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Higher resolutions require more system resources.' }));
 
@@ -1402,11 +1481,8 @@ player-fullscreen-action-menu { display: none !important; }
       items.appendChild(mkToggleRow('ytee-high-contrast', 'High Contrast Mode', currentSettings.highContrastUI));
       items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Uses solid backgrounds for buttons.' }));
 
-      // Button Visibility
-      const sectionBtns = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Button Visibility' });
-      items.appendChild(sectionBtns);
       const buttonNames = {
-        wl: 'Watch Later', url: 'Copy URL', screenshot: 'Screenshot',
+        vol: 'Volume Controls', wl: 'Watch Later', url: 'Copy URL', screenshot: 'Screenshot',
         clip: 'Clip', pip: 'Picture-in-Picture (Firefox unsupported)',
         speed: 'Playback Speed', stats: 'Stats for Nerds',
       };
@@ -1446,6 +1522,7 @@ player-fullscreen-action-menu { display: none !important; }
       newSettings.preferredQuality = document.getElementById('preferred-quality').value || 'auto';
       newSettings.compactMode = document.getElementById('ytee-compact-mode').checked;
       newSettings.highContrastUI = document.getElementById('ytee-high-contrast').checked;
+      newSettings.volumeCache = currentSettings.volumeCache || {};
       newSettings.isCollapsed = currentSettings.isCollapsed;
       currentSettings = newSettings;
       saveStoredSettings(currentSettings);
@@ -1460,7 +1537,19 @@ player-fullscreen-action-menu { display: none !important; }
 
     const updateButtonVisibility = () => {
       const buttonMap = { wl: wlBtn, url: urlBtn, screenshot: screenshotBtn, clip: clipBtn, pip: pipBtn, speed: speedBtn, stats: statsBtn };
-      Object.keys(buttonMap).forEach(key => { buttonMap[key].style.display = currentSettings.buttons[key] ? '' : 'none'; });
+      let anyCollapsibleVisible = false;
+      Object.keys(buttonMap).forEach(key => {
+        const isVisible = key === 'pip'
+          ? currentSettings.buttons[key] && pipSupported
+          : currentSettings.buttons[key];
+        buttonMap[key].style.display = isVisible ? '' : 'none';
+        if (isVisible) anyCollapsibleVisible = true;
+      });
+      const volDisplay = currentSettings.buttons.vol ? '' : 'none';
+      if (muteBtn) muteBtn.style.display = volDisplay;
+      if (vol) vol.style.display = volDisplay;
+
+      if (toggleBtn) toggleBtn.style.display = anyCollapsibleVisible ? '' : 'none';
     };
 
     // Hotkeys
@@ -1557,12 +1646,6 @@ player-fullscreen-action-menu { display: none !important; }
       }
     }, true);
 
-    const toggleBtn = mkBtn('custom-toggle-btn', currentSettings.isCollapsed ? 'expand' : 'hide', currentSettings.isCollapsed ? 'Expand' : 'Hide', 'Hide/Show controls', 'Toggle UI visibility');
-    toggleBtn.addEventListener('click', () => {
-      currentSettings.isCollapsed = !currentSettings.isCollapsed;
-      saveStoredSettings(currentSettings);
-      applyUIStates(currentSettings);
-    });
 
     const btnGroup = document.createElement("div");
     btnGroup.id = "custom-btn-group";
@@ -1599,6 +1682,15 @@ player-fullscreen-action-menu { display: none !important; }
       if (rafPending) return;
       rafPending = requestAnimationFrame(() => { showControls(); rafPending = 0; });
     });
+
+
+    // memory 2
+    const initialVid = getPlayer()?.getVideoData?.().video_id;
+    if (initialVid && currentSettings.volumeCache[initialVid] !== undefined) {
+      applyVolume(currentSettings.volumeCache[initialVid]);
+    }
+
+    applySpeed(targetSpeed);
     showControls();
 
     window.addEventListener("dblclick", (e) => {

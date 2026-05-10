@@ -6,6 +6,15 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ---
 
+## ✨ New in v2.4.0
+
+**Persistent and draggable Mini stats**: now remembers for your last 10 videos if its visible and its position.
+- **Connection speed**: Mini Stats now displays your connection speed from youtube's stats for nerds.
+- **Better Latency, dropped frames & Buffer**: now gets stats from youtube's stats for nerds instead of doing it with my old way.
+- **Live Viewer Count (Holodex only)**: Added real-time "Watching" stats directly to the Mini Stats overlay. In Holodex, there's no way to see the curent number of live viewers without closing the embed to check the mini icon or viewing the stream directly on YouTube.
+
+---
+
 ## ✨ New in v2.3.0
 
 - **Persistent Volume**: now remembers the volume for your last 10 videos, so you won't need to re-adjust after a tab refresh.
@@ -13,29 +22,6 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 - **Volume Control Visibility**: can now be toggled on/off on settings menu.
 - **Color-Coded Dropped Frames**: Mini Stats overlay now color-codes dropped frames (Blue to Red)
 - **Button Visibility Fix**: Fixed an issue where the PiP and Stats buttons wouldn't hide when disabled in settings.
-
----
-
-## ✨ New in v2.2.0
-
-- **🎬 Video Clipping**: Record WebM clips to share or save for later.
-- **🔊 Volume Boost**: Boost volume up to 3x for quiet videos.
-- **📊 Mini Stats**: See buffer and lag info quickly with Ctrl + Click.
-- **📱 Compact Mode**: Icons-only interface **optimized for multiple POV streams** (Multiview).
-- **🌓 High Contrast Mode**: Solid button styles for better visibility against bright or busy video backgrounds.
-- **↔️ Hide/Expand Toggle**: Collapse the UI to hide everything except the toggle and settings buttons.
-- **⚙️ Redesigned Settings**: A cleaner, more intuitive configuration menu.
-- **📐 Responsive Scaling**: UI elements now dynamically scale based on the video player size (use Compact Mode if the UI still looks too large).
-- **🛠️ Bug Fixes**: General fixes and performance improvements.
-
----
-
-## ✨ New in v2.0.0
-
-- **⚙️ Settings Menu**: A brand new configuration interface to toggle button visibility and customize hotkeys.
-- **🕒 Watch Later Support**: Save videos to your Watch Later list directly from the embed UI.
-- **⚡ Multiview Performance**: Optimized for Holodex Multiview.
-- **📸 Pro Screenshots**: Snapshots now include the **Channel Name** and **precise timestamps (ms)** in the filename.
 
 ---
 
@@ -92,7 +78,7 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ### 📊 Advanced (Stats for Nerds)
 - Press **Shift + S** or click the **Stats button**.
-- **Ctrl + Click** for a tiny overlay showing buffer and lag info.
+- **Ctrl + Click** for a tiny overlay showing connection speed, buffer, latency, dropped frames, and live viewer info.
 
 ---
 

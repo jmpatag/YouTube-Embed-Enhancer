@@ -2,13 +2,13 @@
 
 The latest YouTube embed UI update removed proper volume control, limiting users to a simple mute/unmute toggle. This makes it difficult to balance audio—especially on platforms like Holodex where multiple streams (POVs) are played at the same time.
 
-**YouTube Embed Enhancer** restores missing controls and adds powerful new features for a smoother, more flexible viewing experience.
+**YouTube Embed Enhancer** restores proper volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
 
 ---
 
 ## ✨ New in v2.4.0
 
-**Persistent and draggable Mini stats**: now remembers for your last 10 videos if its visible and its position.
+- **Persistent and draggable Mini stats**: now remembers for your last 10 videos if its visible and its position.
 - **Connection speed**: Mini Stats now displays your connection speed from youtube's stats for nerds.
 - **Better Latency, dropped frames & Buffer**: now gets stats from youtube's stats for nerds instead of doing it with my old way.
 - **Live Viewer Count (Holodex only)**: Added real-time "Watching" stats directly to the Mini Stats overlay. In Holodex, there's no way to see the current number of live viewers without closing the embed to check the mini icon or viewing the stream directly on YouTube.

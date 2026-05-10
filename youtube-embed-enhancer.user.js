@@ -2,7 +2,7 @@
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
 // @version      2.4.1
-// @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
+// @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
 // @author       jmpatag
 // @license      GPL-3.0
 // @match        *://www.youtube.com/embed/*
@@ -23,6 +23,16 @@
 
   const isControlsDisabled = new URLSearchParams(window.location.search).get("controls") === "0";
   const isPlayButtonMissing = !document.querySelector(".ytp-play-button");
+  const isChat = () => {
+    const href = window.location.href.toLowerCase();
+    if (href.includes('live_chat') || href.includes('livechat') || href.includes('chat_replay') || href.includes('is_chat=1')) return true;
+    if (document.querySelector('yt-live-chat-renderer, yt-live-chat-app, #chat-messages, #live-chat-frame')) return true;
+    if (document.documentElement.classList.contains('yt-live-chat-app') || (window.name && window.name.toLowerCase().includes('chat'))) return true;
+    if (window.innerWidth < 400 && window.innerHeight > window.innerWidth) return true;
+    return false;
+  };
+
+  if (isChat()) return;
 
   if (!isControlsDisabled && !isPlayButtonMissing) {
     console.log('YTEE: Normal controls detected, enhancing anyway.');
@@ -695,6 +705,8 @@ player-fullscreen-action-menu { display: none !important; }
 
   // Main
   waitForVideo((video) => {
+    if (isChat() || (video.offsetWidth === 0 && video.offsetHeight === 0)) return;
+
     let targetVolume = video.volume;
     let targetMuted = video.muted;
 

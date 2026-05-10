@@ -11,7 +11,7 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 **Persistent and draggable Mini stats**: now remembers for your last 10 videos if its visible and its position.
 - **Connection speed**: Mini Stats now displays your connection speed from youtube's stats for nerds.
 - **Better Latency, dropped frames & Buffer**: now gets stats from youtube's stats for nerds instead of doing it with my old way.
-- **Live Viewer Count (Holodex only)**: Added real-time "Watching" stats directly to the Mini Stats overlay. In Holodex, there's no way to see the curent number of live viewers without closing the embed to check the mini icon or viewing the stream directly on YouTube.
+- **Live Viewer Count (Holodex only)**: Added real-time "Watching" stats directly to the Mini Stats overlay. In Holodex, there's no way to see the current number of live viewers without closing the embed to check the mini icon or viewing the stream directly on YouTube.
 
 ---
 

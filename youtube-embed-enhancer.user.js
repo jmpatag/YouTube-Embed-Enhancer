@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.4.0
+// @version      2.4.1
 // @description  Enhances YouTube Embeds with custom volume controls, hotkeys, and some optimizations.
 // @author       jmpatag
 // @license      GPL-3.0
@@ -292,6 +292,10 @@ player-fullscreen-action-menu { display: none !important; }
 [data-ytee-labels="1"] .ytee-btn { width: auto; padding: 0 clamp(6px,calc(var(--ytee-ew) * 0.009),13px); }
 [data-ytee-labels="1"] .ytee-btn .ytee-label { display: inline; }
 [data-ytee-labels="1"] .ytee-btn .ytee-icon { display: flex; }
+
+/* Force icon-only for specific buttons */
+#custom-settings-btn, #custom-toggle-btn { width: var(--ytee-btn-size) !important; padding: 0 !important; }
+#custom-settings-btn .ytee-label, #custom-toggle-btn .ytee-label { display: none !important; }
 
 /* State colors */
 #custom-stats-btn.active {
@@ -1387,7 +1391,7 @@ player-fullscreen-action-menu { display: none !important; }
     });
 
     // Settings Modal
-    const settingsBtn = mkBtn('custom-settings-btn', 'settings', 'Settings', 'Settings Menu', null, false);
+    const settingsBtn = mkBtn('custom-settings-btn', 'settings', '', 'Settings', 'Settings Menu', false);
     const settingsModal = document.createElement("div");
     settingsModal.id = "custom-settings-modal";
     let isSettingsOpen = false;

@@ -8,7 +8,7 @@
 // @match        *://www.youtube.com/embed/*
 // @match        *://www.youtube-nocookie.com/embed/*
 // @run-at       document-idle
-// @require      https://github.com/Vanilagy/mediabunny/releases/download/v1.44.2/mediabunny.min.cjs
+// @require      https://cdn.jsdelivr.net/gh/jmpatag/YouTube-Embed-Enhancer@main/mediabunny.min.cjs
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener

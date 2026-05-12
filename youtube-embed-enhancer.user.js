@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.4.1
+// @version      2.5.0
 // @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
 // @author       jmpatag
 // @license      GPL-3.0
 // @match        *://www.youtube.com/embed/*
 // @match        *://www.youtube-nocookie.com/embed/*
 // @run-at       document-idle
+// @require      https://github.com/Vanilagy/mediabunny/releases/download/v1.44.2/mediabunny.min.cjs
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
@@ -127,6 +128,27 @@ player-fullscreen-action-menu { display: none !important; }
   will-change: opacity;
 }
 #custom-clip-overlay.show { opacity: 1; transition: opacity var(--ytee-anim-fast); }
+
+/* Instant Replay indicator */
+#custom-replay-overlay {
+  position: fixed;
+  top: clamp(160px,28vh,300px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(80,0,160,0.82);
+  color: white;
+  padding: clamp(4px,calc(var(--ytee-ew) * 0.005),7px) clamp(10px,calc(var(--ytee-ew) * 0.014),18px);
+  border-radius: 6px;
+  font-size: clamp(11px,calc(var(--ytee-ew) * 0.014),16px);
+  font-family: monospace;
+  font-weight: bold;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ytee-anim-slow);
+  will-change: opacity;
+}
+#custom-replay-overlay.show { opacity: 1; transition: opacity var(--ytee-anim-fast); }
 
 #custom-mini-stats {
   position: fixed;
@@ -349,6 +371,19 @@ player-fullscreen-action-menu { display: none !important; }
 }
 #custom-clip-btn.recording svg { fill: #ff4444; }
 
+/* Instant Replay button — purple pulse when buffer is filling */
+@keyframes ytee-replay-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(160,80,255,0.7); }
+  50%      { box-shadow: 0 0 0 5px rgba(160,80,255,0); }
+}
+#custom-replay-btn.buffering {
+  color: #c084fc !important;
+  background: rgba(160,80,255,0.15) !important;
+  border-color: rgba(160,80,255,0.65) !important;
+  animation: ytee-replay-pulse 2s ease-in-out infinite;
+}
+#custom-replay-btn.buffering svg { fill: #c084fc; }
+
 /* Feedback States */
 @keyframes ytee-btn-bounce {
   0%, 100% { transform: scale(1); }
@@ -525,6 +560,7 @@ player-fullscreen-action-menu { display: none !important; }
     url: () => mkSvgEl({ tag: 'path', attrs: { d: 'M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z' } }),
     screenshot: () => mkSvgEl({ tag: 'path', attrs: { d: 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z' } }),
     clip: () => mkSvgEl({ tag: 'circle', attrs: { cx: '12', cy: '12', r: '7' } }),
+    rewind: () => mkSvgEl({ tag: 'path', attrs: { d: 'M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z' } }),
     pip: () => mkSvgEl(
       { tag: 'path', attrs: { d: 'M19 7H5c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-9 5v-1.5l4 2-4 2V12z' } },
       { tag: 'path', attrs: { d: 'M23 5h-2v14h2V5zM1 5v14h2V5H1z' } }
@@ -563,17 +599,20 @@ player-fullscreen-action-menu { display: none !important; }
   const waitForVideo = (callback, timeoutMs = 15000) => {
     const existing = document.querySelector("video");
     if (existing) { callback(existing); return; }
-    const observer = new MutationObserver(() => {
+    const start = Date.now();
+    const interval = setInterval(() => {
       const v = document.querySelector("video");
-      if (v) { observer.disconnect(); clearTimeout(timer); callback(v); }
-    });
-    const timer = setTimeout(() => { observer.disconnect(); console.warn('YTEE: video element never appeared'); }, timeoutMs);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+      if (v) { clearInterval(interval); callback(v); return; }
+      if (Date.now() - start >= timeoutMs) {
+        clearInterval(interval);
+        console.warn('YTEE: video element never appeared');
+      }
+    }, 200);
   };
 
   // Settings
   const defaultSettings = {
-    buttons: { wl: true, url: true, screenshot: true, clip: true, pip: true, speed: true, stats: true, vol: true },
+    buttons: { wl: true, url: true, screenshot: true, clip: true, replay: true, pip: true, speed: true, stats: true, vol: true },
     hotkeys: {
       toggleMute: 'm',
       toggleStats: 'shift+s',
@@ -587,8 +626,11 @@ player-fullscreen-action-menu { display: none !important; }
     volumeBoostLevel: 1,
     enableVolumeBoost: true,
     enableScrollVolume: true,
+    volumeStep: 5,
+    initialVolume: 100,
     clipDuration: 5,
     clipDurationCtrl: 300,
+    instantReplayDuration: 30,
     preferredQuality: 'auto',
     compactMode: false,
     isCollapsed: false,
@@ -626,8 +668,11 @@ player-fullscreen-action-menu { display: none !important; }
         : s.volumeBoost === true ? 1.5 : defaultSettings.volumeBoostLevel,
       enableVolumeBoost: typeof s.enableVolumeBoost === 'boolean' ? s.enableVolumeBoost : defaultSettings.enableVolumeBoost,
       enableScrollVolume: typeof s.enableScrollVolume === 'boolean' ? s.enableScrollVolume : defaultSettings.enableScrollVolume,
+      initialVolume: typeof s.initialVolume === 'number' ? Math.min(100, Math.max(0, s.initialVolume)) : defaultSettings.initialVolume,
+      volumeStep: typeof s.volumeStep === 'number' ? Math.min(100, Math.max(1, s.volumeStep)) : defaultSettings.volumeStep,
       clipDuration: typeof s.clipDuration === 'number' ? Math.min(300, Math.max(1, s.clipDuration)) : defaultSettings.clipDuration,
       clipDurationCtrl: typeof s.clipDurationCtrl === 'number' ? Math.min(300, Math.max(1, s.clipDurationCtrl)) : defaultSettings.clipDurationCtrl,
+      instantReplayDuration: typeof s.instantReplayDuration === 'number' ? Math.min(60, Math.max(1, s.instantReplayDuration)) : defaultSettings.instantReplayDuration,
       preferredQuality: typeof s.preferredQuality === 'string' ? s.preferredQuality : defaultSettings.preferredQuality,
       compactMode: typeof s.compactMode === 'boolean' ? s.compactMode : (typeof s.labelMode === 'boolean' ? !s.labelMode : defaultSettings.compactMode),
       isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : defaultSettings.isCollapsed,
@@ -668,6 +713,7 @@ player-fullscreen-action-menu { display: none !important; }
   currentSettings = normalizeSettings(currentSettings);
   applyUIStates(currentSettings);
 
+  // file naming
   const getVideoAuthor = (player) => {
     if (player && typeof player.getVideoData === 'function') {
       const data = player.getVideoData();
@@ -713,8 +759,14 @@ player-fullscreen-action-menu { display: none !important; }
     const uw = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
     let cachedPlayer = null;
+    let playerCacheTime = 0;
+    const PLAYER_CACHE_TTL = 1000;
+
     const getPlayer = () => {
-      if (cachedPlayer) return cachedPlayer;
+      if (cachedPlayer && cachedPlayer.isConnected) return cachedPlayer;
+      const now = Date.now();
+      if (now - playerCacheTime < PLAYER_CACHE_TTL) return cachedPlayer;
+      playerCacheTime = now;
       cachedPlayer = uw.document.getElementById("movie_player") || uw.document.querySelector(".html5-video-player");
       return cachedPlayer;
     };
@@ -756,43 +808,72 @@ player-fullscreen-action-menu { display: none !important; }
     tryHookQuality();
 
     let scriptChangeDepth = 0;
-    let audioContext = null, gainNode = null, mediaSource = null, virtualMuted = video.muted, audioSetupFailed = false;
-    let activeStream = null, rafPending = 0;
+    let audioContext = null, gainNode = null, recordingGain = null, mediaSource = null, virtualMuted = video.muted, audioSetupFailed = false;
+    let activeStream = null, clipAudioDestination = null, audioHooked = false;
     let volTimeout, speedTimeout, controlsTimeout, clipRafId = null;
+    let lastMouseMoveTime = 0;
+    const MOUSE_THROTTLE_MS = 100;
+
+    const RecordingState = { IDLE: 'idle', CLIPPING: 'clipping', REPLAYING: 'replaying' };
+    let activeRecordingState = RecordingState.IDLE;
 
     const getBoostLevel = () => currentSettings.enableVolumeBoost ? Math.max(1, Number(currentSettings.volumeBoostLevel) || 1) : 1;
 
     // Volume
     const setupWebAudio = () => {
       if (gainNode || audioSetupFailed || !(window.AudioContext || window.webkitAudioContext)) return;
+      if (audioContext && audioContext.state === 'closed') return;
+
       try {
         const AudioCtor = window.AudioContext || window.webkitAudioContext;
-        audioContext = new AudioCtor();
-        mediaSource = audioContext.createMediaElementSource(video);
+        if (!audioContext) audioContext = new AudioCtor();
+        if (!mediaSource) mediaSource = audioContext.createMediaElementSource(video);
+
         gainNode = audioContext.createGain();
         mediaSource.connect(gainNode);
         gainNode.connect(audioContext.destination);
+
+        recordingGain = audioContext.createGain();
+        recordingGain.gain.value = 1.0;
+        mediaSource.connect(recordingGain);
+
         video.volume = 1;
-        if (audioContext.state === 'suspended') audioContext.resume().catch(e => console.warn('AudioContext resume failed', e));
+        if (audioContext.state === 'suspended') audioContext.resume().catch(() => { });
       } catch (e) {
         console.warn('Web Audio setup failed', e);
-        audioContext = null; gainNode = null; mediaSource = null; audioSetupFailed = true;
+        gainNode = null; recordingGain = null;
+        audioSetupFailed = true;
       }
     };
 
     const setGain = (linearVolume) => {
       if (!gainNode || !audioContext) return;
-      if (audioContext.state === 'suspended') audioContext.resume().catch(e => console.warn('AudioContext resume failed', e));
+      if (audioContext.state === 'suspended') audioContext.resume().catch(() => { });
       gainNode.gain.setTargetAtTime(linearVolume * getBoostLevel(), audioContext.currentTime, 0.01);
     };
 
     const applyAudioState = (volume, muted) => {
+      if (!audioHooked) {
+        audioHooked = true;
+        ['click', 'keydown', 'touchstart'].forEach(ev => {
+          window.addEventListener(ev, () => {
+            if (audioContext && audioContext.state === 'suspended') audioContext.resume().catch(() => { });
+          }, { once: true, capture: true });
+        });
+      }
       scriptChangeDepth++;
       try {
         targetVolume = Math.min(1, Math.max(0, volume));
         targetMuted = muted;
         virtualMuted = muted;
-        if (currentSettings.enableVolumeBoost && !gainNode && getBoostLevel() > 1) setupWebAudio();
+        if (currentSettings.enableVolumeBoost && getBoostLevel() > 1) {
+          if (!audioContext || audioContext.state === 'closed') {
+            audioSetupFailed = false;
+            gainNode = null;
+            mediaSource = null;
+          }
+          if (!gainNode) setupWebAudio();
+        }
         if (currentSettings.enableVolumeBoost && gainNode) {
           setGain(targetMuted ? 0 : targetVolume);
         } else {
@@ -867,7 +948,7 @@ player-fullscreen-action-menu { display: none !important; }
 
     let isHoveringSpeedBtn = false;
     let pendingWheelDelta = 0, wheelRafId = 0;
-    window.addEventListener("wheel", (e) => {
+    const onWheel = (e) => {
       if (isSettingsOpen) {
         if (settingsContent.contains(e.target)) return;
         e.stopImmediatePropagation(); e.preventDefault(); return;
@@ -888,13 +969,14 @@ player-fullscreen-action-menu { display: none !important; }
         if (shouldHandleSpeed) {
           applySpeed(targetSpeed + (delta > 0 ? -SPEED_STEP : SPEED_STEP));
         } else if (shouldHandleVolume) {
-          applyVolume(targetVolume + (delta > 0 ? -0.05 : 0.05));
+          applyVolume(targetVolume + (delta > 0 ? -(currentSettings.volumeStep / 100) : (currentSettings.volumeStep / 100)));
         }
       });
-    }, { passive: false });
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
 
     // Stats
-    let isStatsOpen = false, isMiniStatsOpen = false, miniStatsTimer = null;
+    let isStatsOpen = false, isMiniStatsOpen = false, miniStatsInterval = null;
     const miniStats = Object.assign(document.createElement("div"), { id: "custom-mini-stats" });
     const statsBtn = mkBtn('custom-stats-btn', 'stats', 'Stats', 'Stats (Ctrl = Mini)', 'Stats for Nerds (Shift+S)');
 
@@ -916,7 +998,7 @@ player-fullscreen-action-menu { display: none !important; }
       miniStats.style.left = x + 'px';
       miniStats.style.top = y + 'px';
       miniStats.style.bottom = 'auto';
-    });
+    }, { passive: true });
     window.addEventListener('mouseup', () => {
       if (!isDragging) return;
       isDragging = false;
@@ -957,6 +1039,7 @@ player-fullscreen-action-menu { display: none !important; }
     })();
 
     let lastWatcherTime = 0;
+    let isFetchingViewers = false;
     const formatViewers = (n) => {
       if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
       if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
@@ -1050,20 +1133,23 @@ player-fullscreen-action-menu { display: none !important; }
         const now = Date.now();
         const viewsText = miniStatsParts.views.textContent.trim();
         const isInitial = viewsText === '-' || viewsText === '';
-        if (now - lastWatcherTime >= (isInitial ? 5000 : 90000)) {
+        if (!isFetchingViewers && now - lastWatcherTime >= (isInitial ? 5000 : 90000)) {
           lastWatcherTime = now;
           const videoId = getVideoId(p);
           if (videoId && videoId.length > 5) {
+            isFetchingViewers = true;
             fetchViewers(videoId).then(res => {
               if (res.v && res.v !== '-') miniStatsParts.views.textContent = res.v;
               if (miniStatsWrappers.views) {
                 miniStatsWrappers.views.style.display = (lastHolodexStatus === 'past') ? 'none' : '';
               }
+            }).finally(() => {
+              isFetchingViewers = false;
             });
           }
         }
-      } finally {
-        if (isMiniStatsOpen) miniStatsTimer = setTimeout(updateMiniStats, 2000);
+      } catch (e) {
+        console.error('YTEE: updateMiniStats failed', e);
       }
     };
 
@@ -1071,8 +1157,14 @@ player-fullscreen-action-menu { display: none !important; }
       isMiniStatsOpen = !isMiniStatsOpen;
       miniStats.classList.toggle("show", isMiniStatsOpen);
       statsBtn.classList.toggle("active", isMiniStatsOpen);
-      clearTimeout(miniStatsTimer);
-      if (isMiniStatsOpen) updateMiniStats();
+      clearInterval(miniStatsInterval);
+      miniStatsInterval = null;
+      if (isMiniStatsOpen) {
+        lastWatcherTime = 0;
+        isFetchingViewers = false;
+        updateMiniStats();
+        miniStatsInterval = setInterval(updateMiniStats, 2000);
+      }
 
       const vid = getVideoId(getPlayer());
       if (vid) {
@@ -1161,11 +1253,42 @@ player-fullscreen-action-menu { display: none !important; }
     const clipBtn = mkBtn('custom-clip-btn', 'clip', 'Clip', 'Record Clip (Ctrl = Long)');
     let clipRecorder = null;
 
+    const remuxToMp4 = async (chunks, mimeType) => {
+      const blobs = chunks
+        .map(c => c.data)
+        .filter(b => b instanceof Blob && b.size > 0);
+
+      if (blobs.length === 0) throw new Error('remuxToMp4: no valid chunks to remux');
+
+      const rawBlob = new Blob(blobs, { type: mimeType });
+
+      const { Input, Output, Conversion, BlobSource, BufferTarget, ALL_FORMATS, Mp4OutputFormat } = Mediabunny;
+
+      const input = new Input({
+        source: new BlobSource(rawBlob),
+        formats: ALL_FORMATS,
+      });
+      const output = new Output({
+        format: new Mp4OutputFormat(),
+        target: new BufferTarget(),
+      });
+
+      const conversion = await Conversion.init({ input, output });
+      await conversion.execute();
+
+      return new Blob([output.target.buffer], { type: 'video/mp4' });
+    };
+
     const stopClip = (cancelled) => {
       if (!clipRecorder) return;
+      activeRecordingState = RecordingState.IDLE;
       if (clipRecorder.state !== 'inactive') clipRecorder.stop();
       clipRecorder = null;
       if (activeStream) { activeStream.getTracks().forEach(t => t.stop()); activeStream = null; }
+      if (clipAudioDestination) {
+        if (recordingGain) try { recordingGain.disconnect(clipAudioDestination); } catch (e) { }
+        clipAudioDestination = null;
+      }
       cancelAnimationFrame(clipRafId); clipRafId = null;
       clipBtn.classList.remove('recording');
       setBtnLabel(clipBtn, cancelled ? '✗ Cancelled' : 'Processing…');
@@ -1175,17 +1298,28 @@ player-fullscreen-action-menu { display: none !important; }
 
     const startClip = (durationSec) => {
       if (clipRecorder) { stopClip(true); return; }
+      if (activeRecordingState === RecordingState.CLIPPING) return;
+      if (activeRecordingState === RecordingState.REPLAYING) {
+        setBtnLabel(clipBtn, '✗ Busy');
+        setTimeout(() => setBtnLabel(clipBtn), 1500);
+        return;
+      }
       if (!video.captureStream) { setBtnLabel(clipBtn, '✗ N/A'); setTimeout(() => setBtnLabel(clipBtn), 2000); return; }
+      activeRecordingState = RecordingState.CLIPPING;
 
-      const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')
-        ? 'video/webm; codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')
-          ? 'video/webm; codecs=vp8,opus' : 'video/webm';
+      const mimeType = MediaRecorder.isTypeSupported('video/mp4; codecs=avc1,mp4a.40.2')
+        ? 'video/mp4; codecs=avc1,mp4a.40.2'
+        : MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')
+          ? 'video/webm; codecs=vp9,opus'
+          : MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')
+            ? 'video/webm; codecs=vp8,opus'
+            : 'video/webm';
 
       // Clip Recording Setup
       const width = video.videoWidth || 1920;
       const height = video.videoHeight || 1080;
       const px = width * height;
+      const isMP4 = mimeType.includes('mp4');
       const isVP9 = mimeType.includes('vp9');
 
       let fps = 30;
@@ -1208,13 +1342,40 @@ player-fullscreen-action-menu { display: none !important; }
         [3840 * 2160, 0.060, 0.090],
       ];
 
-      const [, vp9bpp, vp8bpp] = BPP_MAP.find(([maxPx]) => px <= maxPx) ?? BPP_MAP.at(-1);
-      const videoBitsPerSecond = Math.round(width * height * fps * (isVP9 ? vp9bpp : vp8bpp));
+      const H264_BPP_MAP = [
+        [426 * 240, 0.150, 0.210],
+        [640 * 360, 0.120, 0.180],
+        [854 * 480, 0.100, 0.150],
+        [1280 * 720, 0.085, 0.120],
+        [1920 * 1080, 0.065, 0.096],
+        [2560 * 1440, 0.048, 0.072],
+        [3840 * 2160, 0.036, 0.054],
+      ];
+
+      const map = isMP4 ? H264_BPP_MAP : BPP_MAP;
+      const [, bppHigh, bppLow] = map.find(([maxPx]) => px <= maxPx) ?? map.at(-1);
+      const videoBitsPerSecond = Math.round(width * height * fps * (isVP9 ? bppHigh : bppLow));
 
       try {
-        activeStream = video.captureStream();
+        const videoStream = video.captureStream();
+        const videoTracks = videoStream.getVideoTracks();
+        let audioTracks = videoStream.getAudioTracks();
+
+        if (recordingGain && audioContext) {
+          clipAudioDestination = audioContext.createMediaStreamDestination();
+          recordingGain.connect(clipAudioDestination);
+          audioTracks = clipAudioDestination.stream.getAudioTracks();
+        }
+        activeStream = new MediaStream([...videoTracks, ...audioTracks]);
+
+        if (activeStream.getTracks().length === 0) {
+          console.warn('YTEE: captureStream returned no tracks');
+          activeRecordingState = RecordingState.IDLE;
+          setBtnLabel(clipBtn, '✗ Not Ready'); setTimeout(() => setBtnLabel(clipBtn), 2000); return;
+        }
       } catch (e) {
         console.warn('YTEE: captureStream failed', e);
+        activeRecordingState = RecordingState.IDLE;
         setBtnLabel(clipBtn, '✗ Error'); setTimeout(() => setBtnLabel(clipBtn), 2000); return;
       }
 
@@ -1228,21 +1389,33 @@ player-fullscreen-action-menu { display: none !important; }
         });
       } catch (e) {
         console.warn('YTEE: MediaRecorder init failed', e);
-        activeStream.getTracks().forEach(t => t.stop()); activeStream = null;
+        if (activeStream) activeStream.getTracks().forEach(t => t.stop()); activeStream = null;
+        activeRecordingState = RecordingState.IDLE;
         setBtnLabel(clipBtn, '✗ Error'); setTimeout(() => setBtnLabel(clipBtn), 2000); return;
       }
 
-      recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) chunks.push(ev.data); };
-      recorder.onstop = () => {
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) chunks.push({ data: ev.data, time: performance.now() });
+      };
+      recorder.onstop = async () => {
         if (chunks.length === 0) { setBtnLabel(clipBtn, '✗ Empty'); setTimeout(() => setBtnLabel(clipBtn), 1500); return; }
-        const blob = new Blob(chunks, { type: mimeType });
-        const author = getVideoAuthor(getPlayer());
-        const timestamp = formatTimestamp(video.currentTime);
-        const objUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objUrl; a.download = `${author}_${timestamp}.webm`; a.click();
-        URL.revokeObjectURL(objUrl);
-        setBtnLabel(clipBtn, '✓ Saved!');
+
+        setBtnLabel(clipBtn, 'Processing...');
+        try {
+          const mp4Blob = await remuxToMp4(chunks, mimeType);
+          const author = getVideoAuthor(getPlayer());
+          const timestamp = formatTimestamp(video.currentTime);
+          const objUrl = URL.createObjectURL(mp4Blob);
+          const a = document.createElement('a');
+          a.href = objUrl;
+          a.download = `${author}_${timestamp}.mp4`;
+          a.click();
+          URL.revokeObjectURL(objUrl);
+          setBtnLabel(clipBtn, '✓ Saved!');
+        } catch (e) {
+          console.error('YTEE: remux failed', e);
+          setBtnLabel(clipBtn, '✗ Error');
+        }
         setTimeout(() => setBtnLabel(clipBtn), 2000);
       };
       recorder.onerror = (ev) => {
@@ -1251,7 +1424,7 @@ player-fullscreen-action-menu { display: none !important; }
       };
 
       clipRecorder = recorder;
-      recorder.start(200);
+      recorder.start(960);
       clipBtn.classList.add('recording');
       setBtnLabel(clipBtn, 'Stop');
 
@@ -1273,6 +1446,233 @@ player-fullscreen-action-menu { display: none !important; }
       startClip(dur);
     });
     clipBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); stopClip(true); });
+
+    //Instant Replay
+    const replayOverlay = Object.assign(document.createElement('div'), { id: 'custom-replay-overlay' });
+    const replayBtn = mkBtn('custom-replay-btn', 'rewind', 'Replay', 'Instant Replay • Right-click = stop', 'Instant Replay');
+
+    let replayRecorder = null;
+    let replayStream = null, replayAudioDestination = null;
+    let replayChunks = [];
+    let replayInitChunk = null;
+    let replayMimeType = '';
+    let replayActive = false;
+    let replayWaiting = false;
+    let replayRetryCount = 0;
+    let replaySupported = !!video.captureStream && typeof MediaRecorder !== 'undefined';
+
+    const getReplayMimeType = () => {
+      if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1,mp4a.40.2')) return 'video/mp4; codecs=avc1,mp4a.40.2';
+      if (MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')) return 'video/webm; codecs=vp9,opus';
+      if (MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')) return 'video/webm; codecs=vp8,opus';
+      return 'video/webm';
+    };
+
+    const pruneReplayChunks = () => {
+      const windowMs = (Number(currentSettings.instantReplayDuration) || 30) * 1000 + 2000;
+      const cutoff = performance.now() - windowMs;
+      let keepFrom = 0;
+      for (let i = 0; i < replayChunks.length - 1; i++) {
+        if (replayChunks[i].time >= cutoff) break;
+        keepFrom = i + 1;
+      }
+      if (keepFrom > 0) replayChunks = replayChunks.slice(keepFrom);
+    };
+
+    const startInstantReplay = () => {
+      if (replayActive || !replaySupported || replayWaiting) return;
+
+      if (activeRecordingState === RecordingState.CLIPPING) {
+        const waitAndRetry = () => {
+          if (activeRecordingState !== RecordingState.CLIPPING) startInstantReplay();
+          else setTimeout(waitAndRetry, 500);
+        };
+        setTimeout(waitAndRetry, 500);
+        return;
+      }
+
+      if (video.readyState < 1) {
+        replayWaiting = true;
+        video.addEventListener('loadedmetadata', () => {
+          replayWaiting = false;
+          startInstantReplay();
+        }, { once: true });
+        return;
+      }
+
+      try {
+        replayMimeType = getReplayMimeType();
+        const videoStream = video.captureStream();
+        const videoTracks = videoStream.getVideoTracks();
+        let audioTracks = videoStream.getAudioTracks();
+
+        if (recordingGain && audioContext) {
+          replayAudioDestination = audioContext.createMediaStreamDestination();
+          recordingGain.connect(replayAudioDestination);
+          audioTracks = replayAudioDestination.stream.getAudioTracks();
+        }
+        replayStream = new MediaStream([...videoTracks, ...audioTracks]);
+
+        if (replayStream.getTracks().length === 0) {
+          if (replayRetryCount < 10) {
+            replayRetryCount++;
+            console.log(`YTEE: Instant Replay waiting for stream tracks (attempt ${replayRetryCount})...`);
+            replayWaiting = true;
+            setTimeout(() => { replayWaiting = false; startInstantReplay(); }, 1000);
+          } else {
+            console.warn('YTEE: Instant Replay failed to find tracks after multiple attempts.');
+          }
+          return;
+        }
+
+        replayRetryCount = 0;
+
+        replayRecorder = new MediaRecorder(replayStream, {
+          mimeType: replayMimeType,
+          videoBitsPerSecond: 4_000_000,
+          audioBitsPerSecond: 192_000,
+        });
+        replayChunks = [];
+        replayInitChunk = null;
+        replayRecorder.ondataavailable = (ev) => {
+          if (!ev.data || ev.data.size === 0) return;
+          const chunk = { data: ev.data, time: performance.now() };
+          if (!replayInitChunk) {
+            replayInitChunk = chunk;
+          } else {
+            replayChunks.push(chunk);
+            pruneReplayChunks();
+          }
+        };
+        replayRecorder.onerror = (ev) => {
+          console.warn('YTEE: Instant Replay recorder error', ev);
+          stopInstantReplay();
+        };
+        replayRecorder.start(1920);
+        replayActive = true;
+        activeRecordingState = RecordingState.REPLAYING;
+        replayBtn.classList.add('buffering');
+        console.log('YTEE: Instant Replay started');
+        setBtnLabel(replayBtn, 'Started');
+        setTimeout(() => setBtnLabel(replayBtn), 1500);
+      } catch (e) {
+        console.warn('YTEE: Instant Replay start failed', e);
+        if (e.name === 'NotSupportedError' && !e?.message?.includes?.('tracks')) {
+          replaySupported = false;
+          replayBtn.style.display = 'none';
+        }
+      }
+    };
+
+    const stopInstantReplay = () => {
+      if (!replayActive) return;
+      replayActive = false;
+      activeRecordingState = RecordingState.IDLE;
+      replayRetryCount = 0;
+      replayInitChunk = null;
+      try { if (replayRecorder && replayRecorder.state !== 'inactive') replayRecorder.stop(); } catch (e) { }
+      try { if (replayStream) replayStream.getTracks().forEach(t => t.stop()); } catch (e) { }
+      if (replayAudioDestination) {
+        if (recordingGain) try { recordingGain.disconnect(replayAudioDestination); } catch (e) { }
+        replayAudioDestination = null;
+      }
+      replayRecorder = null;
+      replayStream = null;
+      replayBtn.classList.remove('buffering');
+    };
+
+    const saveInstantReplay = async () => {
+      if (!replaySupported) {
+        setBtnLabel(replayBtn, '✗ N/A');
+        flashBtnState(replayBtn, 'error');
+        setTimeout(() => setBtnLabel(replayBtn), 1500);
+        return;
+      }
+
+      pruneReplayChunks();
+
+      if (!replayInitChunk && replayChunks.length === 0) {
+        setBtnLabel(replayBtn, '✗ Empty');
+        flashBtnState(replayBtn, 'error');
+        setTimeout(() => setBtnLabel(replayBtn), 1500);
+        return;
+      }
+
+      const chunksSnapshot = replayInitChunk
+        ? [replayInitChunk, ...replayChunks]
+        : [...replayChunks];
+      const mimeSnapshot = replayMimeType;
+      const author = getVideoAuthor(getPlayer());
+      const timestamp = formatTimestamp(video.currentTime);
+
+      if (replayRecorder && replayRecorder.state === 'recording') {
+        const onFinalChunk = async (ev) => {
+          replayRecorder.removeEventListener('dataavailable', onFinalChunk);
+          if (ev.data && ev.data.size > 0) chunksSnapshot.push({ data: ev.data, time: performance.now() });
+
+          replayChunks = [];
+          await assembleAndDownload(chunksSnapshot, mimeSnapshot, author, timestamp);
+        };
+        replayRecorder.addEventListener('dataavailable', onFinalChunk);
+        try {
+          replayRecorder.requestData();
+        } catch (e) {
+          replayRecorder.removeEventListener('dataavailable', onFinalChunk);
+          await assembleAndDownload(chunksSnapshot, mimeSnapshot, author, timestamp);
+        }
+      } else {
+        await assembleAndDownload(chunksSnapshot, mimeSnapshot, author, timestamp);
+      }
+    };
+
+    const assembleAndDownload = async (chunks, mimeType, author, timestamp) => {
+      if (chunks.length === 0) {
+        setBtnLabel(replayBtn, '✗ Empty');
+        flashBtnState(replayBtn, 'error');
+        setTimeout(() => setBtnLabel(replayBtn), 1500);
+        return;
+      }
+
+      setBtnLabel(replayBtn, 'Processing...');
+      try {
+        const mp4Blob = await remuxToMp4(chunks, mimeType);
+        const objUrl = URL.createObjectURL(mp4Blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = `${author}_instant_replay_${timestamp}.mp4`;
+        a.click();
+        URL.revokeObjectURL(objUrl);
+        setBtnLabel(replayBtn, '✓ Saved!');
+        flashBtnState(replayBtn, 'success');
+      } catch (e) {
+        console.error('YTEE: remux failed', e);
+        setBtnLabel(replayBtn, '✗ Remux Error');
+        flashBtnState(replayBtn, 'error');
+      }
+      setTimeout(() => setBtnLabel(replayBtn), 2000);
+
+      replayOverlay.textContent = `✓ Last ~${currentSettings.instantReplayDuration}s saved`;
+      replayOverlay.classList.add('show');
+      setTimeout(() => replayOverlay.classList.remove('show'), 2000);
+    };
+
+    replayBtn.addEventListener('click', () => {
+      if (!replayActive) {
+        startInstantReplay();
+      } else {
+        saveInstantReplay();
+      }
+    });
+    replayBtn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (replayActive) {
+        stopInstantReplay();
+        setBtnLabel(replayBtn, 'Stopped');
+        setTimeout(() => setBtnLabel(replayBtn), 1500);
+      } else {
+        startInstantReplay();
+      }
+    });
 
     // PiP
     const pipSupported = document.pictureInPictureEnabled && typeof video.requestPictureInPicture === "function";
@@ -1459,108 +1859,169 @@ player-fullscreen-action-menu { display: none !important; }
       return div;
     };
 
+    let settingsDomBuilt = false;
     const showSettingsModal = () => {
       const items = settingsItems;
-      while (items.firstChild) items.removeChild(items.firstChild);
 
-      // Playback
-      const sectionQ = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Playback' });
-      items.appendChild(sectionQ);
-      const qualityDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-      const qualityLabel = Object.assign(document.createElement('label'), { htmlFor: 'preferred-quality', textContent: 'Preferred quality' });
-      const qualitySelect = Object.assign(document.createElement('select'), { id: 'preferred-quality', className: 'ytee-quality-select' });
+      if (!settingsDomBuilt) {
+        while (items.firstChild) items.removeChild(items.firstChild);
+
+        // Playback
+        const sectionQ = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Playback' });
+        items.appendChild(sectionQ);
+        const qualityDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
+        const qualityLabel = Object.assign(document.createElement('label'), { htmlFor: 'preferred-quality', textContent: 'Preferred quality' });
+        const qualitySelect = Object.assign(document.createElement('select'), { id: 'preferred-quality', className: 'ytee-quality-select' });
+        qualityDiv.append(qualityLabel, qualitySelect);
+        items.appendChild(qualityDiv);
+        items.appendChild(Object.assign(document.createElement('div'), { className: 'ytee-quality-note', textContent: 'Applies to all embeds instantly. Falls back to closest available level.' }));
+
+        // Volume
+        const sectionVol = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Volume' });
+        items.appendChild(sectionVol);
+        items.appendChild(mkToggleRow('ytee-enable-scroll-volume', 'Enable scroll wheel volume', false));
+
+        const volInitDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
+        const volInitLabel = Object.assign(document.createElement('label'), { htmlFor: 'ytee-initial-volume', textContent: 'Global initial volume (%)' });
+        const volInitInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-initial-volume', min: '0', max: '100', step: '1', className: 'hk-input' });
+        volInitInput.style.width = '80px';
+        volInitDiv.append(volInitLabel, volInitInput);
+        items.appendChild(volInitDiv);
+
+        const volStepDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
+        const volStepLabel = Object.assign(document.createElement('label'), { htmlFor: 'ytee-volume-step', textContent: 'Volume step (%)' });
+        const volStepInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-volume-step', min: '1', max: '100', step: '1', className: 'hk-input' });
+        volStepInput.style.width = '80px';
+        volStepDiv.append(volStepLabel, volStepInput);
+        items.appendChild(volStepDiv);
+
+        const boostToggleRow = mkToggleRow('ytee-enable-volume-boost', 'Enable volume boost', false);
+        items.appendChild(boostToggleRow);
+        const boostToggleInput = boostToggleRow.querySelector('input');
+
+        const volBoostDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
+        const volBoostLabel = Object.assign(document.createElement('label'), { htmlFor: 'volume-boost-level', textContent: 'Boost level' });
+        const volBoostInput = Object.assign(document.createElement('input'), { type: 'range', id: 'volume-boost-level', min: '1.0', max: '3.0', step: '0.1' });
+        volBoostInput.style.width = '140px';
+        const volBoostValue = Object.assign(document.createElement('span'), { className: 'ytee-slider-value', textContent: '1.0x' });
+        volBoostInput.addEventListener('input', () => { volBoostValue.textContent = `${Number(volBoostInput.value).toFixed(1)}x`; });
+
+        const updateBoostState = () => {
+          const enabled = boostToggleInput.checked;
+          volBoostInput.disabled = !enabled;
+          volBoostDiv.style.opacity = enabled ? '1' : '0.4';
+          volBoostDiv.style.filter = enabled ? '' : 'grayscale(1)';
+          volBoostDiv.style.pointerEvents = enabled ? 'auto' : 'none';
+        };
+        boostToggleInput.addEventListener('change', updateBoostState);
+
+        volBoostDiv.append(volBoostLabel, volBoostInput, volBoostValue);
+        items.appendChild(volBoostDiv);
+
+        // Recording
+        const sectionClip = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Recording' });
+        items.appendChild(sectionClip);
+
+        const clipDurDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
+        const clipDurLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration', textContent: 'Duration (seconds)' });
+        const clipDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration', min: '1', max: '300', step: '1', className: 'hk-input' });
+        clipDurInput.style.width = '80px';
+        clipDurDiv.append(clipDurLabel, clipDurInput);
+        items.appendChild(clipDurDiv);
+
+        const clipCtrlDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
+        const clipCtrlLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration-ctrl', textContent: 'Ctrl+Click duration (seconds)' });
+        const clipCtrlInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration-ctrl', min: '1', max: '300', step: '1', className: 'hk-input' });
+        clipCtrlInput.style.width = '80px';
+        clipCtrlDiv.append(clipCtrlLabel, clipCtrlInput);
+        items.appendChild(clipCtrlDiv);
+
+        // Instant Replay 2
+        const replayDurDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
+        const replayDurLabel = Object.assign(document.createElement('label'), { htmlFor: 'replay-duration', textContent: 'Instant Replay duration (seconds)' });
+        const replayDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'replay-duration', min: '1', max: '60', step: '1', className: 'hk-input' });
+        replayDurInput.style.width = '80px';
+        replayDurDiv.append(replayDurLabel, replayDurInput);
+        items.appendChild(replayDurDiv);
+
+        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Instant Replay records at a lower quality than Clip to reduce background performance impact.' }));
+        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Note: Higher resolutions require more system resources.' }));
+
+        // Hotkeys
+        const hotkeyNames = {
+          toggleMute: 'Toggle Mute', toggleStats: 'Toggle Stats',
+          increaseSpeed: 'Increase Speed', decreaseSpeed: 'Decrease Speed',
+          increaseSpeedFine: 'Increase Speed (fine)', decreaseSpeedFine: 'Decrease Speed (fine)',
+          volumeUp: 'Volume Up', volumeDown: 'Volume Down',
+        };
+        const sectionHK = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Hotkeys' });
+        items.appendChild(sectionHK);
+        Object.keys(hotkeyNames).forEach(key => {
+          const div = Object.assign(document.createElement('div'), { className: 'setting-item' });
+          const input = Object.assign(document.createElement('input'), { type: 'text', id: `hk-${key}`, className: 'hk-input' });
+          input.addEventListener('blur', () => { input.value = sanitizeHotkeyInput(input.value); });
+          const label = Object.assign(document.createElement('label'), { htmlFor: `hk-${key}`, textContent: hotkeyNames[key] });
+          div.append(label, input);
+          items.appendChild(div);
+        });
+
+        // Appearance
+        const sectionUI = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Appearance' });
+        items.appendChild(sectionUI);
+        items.appendChild(mkToggleRow('ytee-compact-mode', 'Compact icon mode (hides text labels)', false));
+        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Compact mode saves space in multi-stream layouts by hiding text labels.' }));
+        items.appendChild(mkToggleRow('ytee-high-contrast', 'High Contrast Mode', false));
+        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Uses solid backgrounds for buttons.' }));
+
+        const buttonNames = {
+          vol: 'Volume Controls', wl: 'Watch Later', url: 'Copy URL', screenshot: 'Screenshot',
+          clip: 'Clip', replay: 'Instant Replay',
+          pip: 'Picture-in-Picture (Firefox unsupported)',
+          speed: 'Playback Speed', stats: 'Stats for Nerds',
+        };
+        Object.keys(buttonNames).forEach(key => items.appendChild(mkToggleRow(`btn-${key}`, buttonNames[key], false)));
+
+        settingsDomBuilt = true;
+      }
+
       const p = getPlayer();
       let availableLevels = [];
       if (p && typeof p.getAvailableQualityLevels === 'function') availableLevels = p.getAvailableQualityLevels().filter(q => q !== 'auto' && q !== 'unknown');
       if (availableLevels.length === 0) availableLevels = QUALITY_ORDER.slice();
-      qualitySelect.appendChild(Object.assign(document.createElement('option'), { value: 'auto', textContent: QUALITY_LABELS['auto'] }));
-      availableLevels.forEach(level => qualitySelect.appendChild(Object.assign(document.createElement('option'), { value: level, textContent: QUALITY_LABELS[level] || level })));
-      qualitySelect.value = currentSettings.preferredQuality || 'auto';
-      if (!qualitySelect.value) qualitySelect.value = 'auto';
-      qualityDiv.append(qualityLabel, qualitySelect);
-      items.appendChild(qualityDiv);
-      items.appendChild(Object.assign(document.createElement('div'), { className: 'ytee-quality-note', textContent: 'Applies to all embeds instantly. Falls back to closest available level.' }));
 
-      // Volume
-      const sectionVol = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Volume' });
-      items.appendChild(sectionVol);
-      items.appendChild(mkToggleRow('ytee-enable-scroll-volume', 'Enable scroll wheel volume', currentSettings.enableScrollVolume));
-      const boostToggleRow = mkToggleRow('ytee-enable-volume-boost', 'Enable volume boost', currentSettings.enableVolumeBoost);
-      items.appendChild(boostToggleRow);
-      const boostToggleInput = boostToggleRow.querySelector('input');
+      const qualitySelect = document.getElementById('preferred-quality');
+      if (qualitySelect) {
+        while (qualitySelect.firstChild) qualitySelect.removeChild(qualitySelect.firstChild);
+        qualitySelect.appendChild(Object.assign(document.createElement('option'), { value: 'auto', textContent: QUALITY_LABELS['auto'] }));
+        availableLevels.forEach(level => qualitySelect.appendChild(Object.assign(document.createElement('option'), { value: level, textContent: QUALITY_LABELS[level] || level })));
+        qualitySelect.value = currentSettings.preferredQuality || 'auto';
+        if (!qualitySelect.value) qualitySelect.value = 'auto';
+      }
 
-      const volBoostDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-      const volBoostLabel = Object.assign(document.createElement('label'), { htmlFor: 'volume-boost-level', textContent: 'Boost level' });
-      const volBoostInput = Object.assign(document.createElement('input'), { type: 'range', id: 'volume-boost-level', min: '1.0', max: '3.0', step: '0.1', value: currentSettings.volumeBoostLevel });
-      volBoostInput.style.width = '140px';
-      const volBoostValue = Object.assign(document.createElement('span'), { className: 'ytee-slider-value', textContent: `${Number(currentSettings.volumeBoostLevel).toFixed(1)}x` });
-      volBoostInput.addEventListener('input', () => { volBoostValue.textContent = `${Number(volBoostInput.value).toFixed(1)}x`; });
+      const setCb = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+      const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 
-      const updateBoostState = () => {
-        const enabled = boostToggleInput.checked;
-        volBoostInput.disabled = !enabled;
-        volBoostDiv.style.opacity = enabled ? '1' : '0.4';
-        volBoostDiv.style.filter = enabled ? '' : 'grayscale(1)';
-        volBoostDiv.style.pointerEvents = enabled ? 'auto' : 'none';
-      };
-      boostToggleInput.addEventListener('change', updateBoostState);
+      setCb('ytee-enable-scroll-volume', currentSettings.enableScrollVolume);
+      setVal('ytee-volume-step', currentSettings.volumeStep);
+      setVal('ytee-initial-volume', currentSettings.initialVolume);
+      setCb('ytee-enable-volume-boost', currentSettings.enableVolumeBoost);
+      const bToggle = document.getElementById('ytee-enable-volume-boost');
+      if (bToggle) bToggle.dispatchEvent(new Event('change'));
 
-      volBoostDiv.append(volBoostLabel, volBoostInput, volBoostValue);
-      items.appendChild(volBoostDiv);
-      updateBoostState();
+      setVal('volume-boost-level', currentSettings.volumeBoostLevel);
+      const bLevel = document.getElementById('volume-boost-level');
+      if (bLevel) bLevel.dispatchEvent(new Event('input'));
 
+      setVal('clip-duration', currentSettings.clipDuration);
+      setVal('clip-duration-ctrl', currentSettings.clipDurationCtrl);
+      setVal('replay-duration', currentSettings.instantReplayDuration);
 
-      // Clip Recording
-      const sectionClip = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Clip Recording' });
-      items.appendChild(sectionClip);
+      Object.keys(currentSettings.hotkeys).forEach(key => setVal(`hk-${key}`, currentSettings.hotkeys[key]));
 
-      const clipDurDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-      const clipDurLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration', textContent: 'Duration (seconds)' });
-      const clipDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration', min: '1', max: '300', step: '1', value: currentSettings.clipDuration, className: 'hk-input' });
-      clipDurInput.style.width = '80px';
-      clipDurDiv.append(clipDurLabel, clipDurInput);
-      items.appendChild(clipDurDiv);
+      setCb('ytee-compact-mode', currentSettings.compactMode);
+      setCb('ytee-high-contrast', currentSettings.highContrastUI);
 
-      const clipCtrlDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-      const clipCtrlLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration-ctrl', textContent: 'Ctrl+Click duration (seconds)' });
-      const clipCtrlInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration-ctrl', min: '1', max: '300', step: '1', value: currentSettings.clipDurationCtrl, className: 'hk-input' });
-      clipCtrlInput.style.width = '80px';
-      clipCtrlDiv.append(clipCtrlLabel, clipCtrlInput);
-      items.appendChild(clipCtrlDiv);
-      items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Higher resolutions require more system resources.' }));
-
-      // Hotkeys
-      const hotkeyNames = {
-        toggleMute: 'Toggle Mute', toggleStats: 'Toggle Stats',
-        increaseSpeed: 'Increase Speed', decreaseSpeed: 'Decrease Speed',
-        increaseSpeedFine: 'Increase Speed (fine)', decreaseSpeedFine: 'Decrease Speed (fine)',
-        volumeUp: 'Volume Up', volumeDown: 'Volume Down',
-      };
-      const sectionHK = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Hotkeys' });
-      items.appendChild(sectionHK);
-      Object.keys(hotkeyNames).forEach(key => {
-        const div = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const input = Object.assign(document.createElement('input'), { type: 'text', id: `hk-${key}`, value: currentSettings.hotkeys[key], className: 'hk-input' });
-        input.addEventListener('blur', () => { input.value = sanitizeHotkeyInput(input.value); });
-        const label = Object.assign(document.createElement('label'), { htmlFor: `hk-${key}`, textContent: hotkeyNames[key] });
-        div.append(label, input);
-        items.appendChild(div);
-      });
-
-      // Appearance
-      const sectionUI = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Appearance' });
-      items.appendChild(sectionUI);
-      items.appendChild(mkToggleRow('ytee-compact-mode', 'Compact icon mode (hides text labels)', currentSettings.compactMode));
-      items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Compact mode saves space in multi-stream layouts by hiding text labels.' }));
-      items.appendChild(mkToggleRow('ytee-high-contrast', 'High Contrast Mode', currentSettings.highContrastUI));
-      items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Uses solid backgrounds for buttons.' }));
-
-      const buttonNames = {
-        vol: 'Volume Controls', wl: 'Watch Later', url: 'Copy URL', screenshot: 'Screenshot',
-        clip: 'Clip', pip: 'Picture-in-Picture (Firefox unsupported)',
-        speed: 'Playback Speed', stats: 'Stats for Nerds',
-      };
-      Object.keys(buttonNames).forEach(key => items.appendChild(mkToggleRow(`btn-${key}`, buttonNames[key], currentSettings.buttons[key])));
+      Object.keys(currentSettings.buttons).forEach(key => setCb(`btn-${key}`, currentSettings.buttons[key]));
 
       settingsModal.classList.add('show');
       isSettingsOpen = true;
@@ -1592,8 +2053,11 @@ player-fullscreen-action-menu { display: none !important; }
       newSettings.volumeBoostLevel = Number(document.getElementById('volume-boost-level').value) || 1;
       newSettings.enableVolumeBoost = document.getElementById('ytee-enable-volume-boost').checked;
       newSettings.enableScrollVolume = document.getElementById('ytee-enable-scroll-volume').checked;
+      newSettings.volumeStep = Math.min(100, Math.max(1, Number(document.getElementById('ytee-volume-step').value) || 5));
+      newSettings.initialVolume = Math.min(100, Math.max(0, Number(document.getElementById('ytee-initial-volume').value) || 100));
       newSettings.clipDuration = Math.min(300, Math.max(1, Number(document.getElementById('clip-duration').value) || 5));
       newSettings.clipDurationCtrl = Math.min(300, Math.max(1, Number(document.getElementById('clip-duration-ctrl').value) || 300));
+      newSettings.instantReplayDuration = Math.min(60, Math.max(1, Number(document.getElementById('replay-duration').value) || 30));
       newSettings.preferredQuality = document.getElementById('preferred-quality').value || 'auto';
       newSettings.compactMode = document.getElementById('ytee-compact-mode').checked;
       newSettings.highContrastUI = document.getElementById('ytee-high-contrast').checked;
@@ -1606,17 +2070,21 @@ player-fullscreen-action-menu { display: none !important; }
       applyQuality();
       applyUIStates(currentSettings);
       updateButtonVisibility();
+
+      if (replayActive) { stopInstantReplay(); setTimeout(startInstantReplay, 200); }
       saveBtn.textContent = 'Saved'; saveBtn.disabled = true;
       setTimeout(() => { hideSettingsModal(); saveBtn.textContent = 'Save'; saveBtn.disabled = false; }, 350);
     });
 
     const updateButtonVisibility = () => {
-      const buttonMap = { wl: wlBtn, url: urlBtn, screenshot: screenshotBtn, clip: clipBtn, pip: pipBtn, speed: speedBtn, stats: statsBtn };
+      const buttonMap = { wl: wlBtn, url: urlBtn, screenshot: screenshotBtn, clip: clipBtn, replay: replayBtn, pip: pipBtn, speed: speedBtn, stats: statsBtn };
       let anyCollapsibleVisible = false;
       Object.keys(buttonMap).forEach(key => {
         const isVisible = key === 'pip'
           ? currentSettings.buttons[key] && pipSupported
-          : currentSettings.buttons[key];
+          : key === 'replay'
+            ? currentSettings.buttons[key] && replaySupported
+            : currentSettings.buttons[key];
         buttonMap[key].style.display = isVisible ? '' : 'none';
         if (isVisible) anyCollapsibleVisible = true;
       });
@@ -1691,7 +2159,7 @@ player-fullscreen-action-menu { display: none !important; }
     };
     buildHotkeyMap();
 
-    window.addEventListener("keydown", (e) => {
+    const onKeyDown = (e) => {
       if (isSettingsOpen) {
         if (e.key === "Escape") { hideSettingsModal(); e.preventDefault(); e.stopImmediatePropagation(); }
         return;
@@ -1714,17 +2182,18 @@ player-fullscreen-action-menu { display: none !important; }
           case 'decreaseSpeed': applySpeed(targetSpeed - SPEED_STEP); break;
           case 'increaseSpeedFine': applySpeed(targetSpeed + SPEED_STEP_FINE); break;
           case 'decreaseSpeedFine': applySpeed(targetSpeed - SPEED_STEP_FINE); break;
-          case 'volumeUp': applyVolume(targetVolume + 0.05); break;
-          case 'volumeDown': applyVolume(targetVolume - 0.05); break;
+          case 'volumeUp': applyVolume(targetVolume + (currentSettings.volumeStep / 100)); break;
+          case 'volumeDown': applyVolume(targetVolume - (currentSettings.volumeStep / 100)); break;
         }
         showControls();
       }
-    }, true);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
 
 
     const btnGroup = document.createElement("div");
     btnGroup.id = "custom-btn-group";
-    btnGroup.append(toggleBtn, wlBtn, urlBtn, screenshotBtn, clipBtn, pipBtn, speedBtn, statsBtn, settingsBtn);
+    btnGroup.append(toggleBtn, wlBtn, urlBtn, screenshotBtn, clipBtn, replayBtn, pipBtn, speedBtn, statsBtn, settingsBtn);
     updateButtonVisibility();
 
     let isHoveringBtnGroup = false;
@@ -1753,10 +2222,13 @@ player-fullscreen-action-menu { display: none !important; }
       }
     };
 
-    window.addEventListener("mousemove", () => {
-      if (rafPending) return;
-      rafPending = requestAnimationFrame(() => { showControls(); rafPending = 0; });
-    });
+    const onMouseMove = () => {
+      const now = Date.now();
+      if (now - lastMouseMoveTime < MOUSE_THROTTLE_MS) return;
+      lastMouseMoveTime = now;
+      showControls();
+    };
+    window.addEventListener("mousemove", onMouseMove, { passive: true });
 
 
     // memory 2
@@ -1764,6 +2236,8 @@ player-fullscreen-action-menu { display: none !important; }
     if (initialVid) {
       if (currentSettings.volumeCache[initialVid] !== undefined) {
         applyVolume(currentSettings.volumeCache[initialVid]);
+      } else {
+        applyVolume(currentSettings.initialVolume / 100);
       }
       if (currentSettings.miniStatsCache[initialVid]) {
         toggleMiniStats();
@@ -1773,15 +2247,38 @@ player-fullscreen-action-menu { display: none !important; }
     applySpeed(targetSpeed);
     showControls();
 
-    window.addEventListener("dblclick", (e) => {
+
+    const onDblClick = (e) => {
       if (isSettingsOpen) return;
       if (e.target.closest("#custom-btn-group, #custom-mute-btn, #custom-vol-slider")) return;
-      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { });
-      else if (document.exitFullscreen) document.exitFullscreen();
-    });
+
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => { });
+        return;
+      }
+
+      const p = getPlayer();
+
+
+      if (p && typeof p.requestFullscreen === 'function') {
+        try { p.requestFullscreen(); return; } catch (e) { }
+      }
+
+      if (video.requestFullscreen) {
+        video.requestFullscreen().catch(() => {
+          document.documentElement.requestFullscreen().catch(() => { });
+        });
+        return;
+      }
+
+      if (video.webkitEnterFullscreen) {
+        try { video.webkitEnterFullscreen(); } catch (e) { }
+      }
+    };
+    window.addEventListener("dblclick", onDblClick, { passive: true });
 
     const initUI = () => {
-      document.body.prepend(volPct, speedOverlay, clipOverlay, miniStats, vol, muteBtn, btnGroup);
+      document.body.prepend(volPct, speedOverlay, clipOverlay, replayOverlay, miniStats, vol, muteBtn, btnGroup);
     };
     initUI();
 
@@ -1810,16 +2307,31 @@ player-fullscreen-action-menu { display: none !important; }
     }
 
     const cleanup = () => {
-      clearTimeout(volTimeout); clearTimeout(speedTimeout); clearTimeout(controlsTimeout); clearTimeout(miniStatsTimer);
+      clearTimeout(volTimeout); clearTimeout(speedTimeout); clearTimeout(controlsTimeout); clearInterval(miniStatsInterval);
       if (clipRafId) cancelAnimationFrame(clipRafId);
-      if (rafPending) cancelAnimationFrame(rafPending);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("dblclick", onDblClick);
+
       if (wheelRafId) cancelAnimationFrame(wheelRafId);
-      rafPending = 0; clipRafId = null; wheelRafId = 0;
+      clipRafId = null; wheelRafId = 0;
       if (clipRecorder) { try { if (clipRecorder.state !== 'inactive') clipRecorder.stop(); } catch (e) { } clipRecorder = null; }
       if (activeStream) { activeStream.getTracks().forEach(t => t.stop()); activeStream = null; }
-      if (audioContext) { audioContext.close().catch(() => { }); audioContext = null; gainNode = null; mediaSource = null; }
+      if (clipAudioDestination) {
+        if (recordingGain) try { recordingGain.disconnect(clipAudioDestination); } catch (e) { }
+        clipAudioDestination = null;
+      }
+      if (audioContext) { audioContext.suspend().catch(() => { }); }
+      stopInstantReplay();
+      replayChunks = [];
+      replayInitChunk = null;
       cachedPlayer = null;
       resizeObs.disconnect();
+
+      [settingsModal, btnGroup, volPct, speedOverlay, clipOverlay, replayOverlay, miniStats, vol, muteBtn].forEach(el => {
+        if (el && el.parentNode) el.remove();
+      });
     };
     window.addEventListener('pagehide', cleanup);
 

@@ -6,12 +6,22 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ---
 
+## ✨ New in v2.5.0
+
+- **Instant Replay**: New Feature. Similar to AMD Relive and Nvidia Shadowplay but for youtube embeds. allows you to save the last X(Configurable) seconds of the video that you can share with your friends/groups.
+- **Global Initial Volume**: New Feature. allows you to set the initial volume of the video.
+- **Volume Step**: New Feature. allows you to set the step of the volume. 
+- **clip**: saves as mp4 format instead of webm for better compatibility.
+- **Fix**: Bugs and performance fixes.
+
+---
+
 ## ✨ New in v2.4.0
 
 - **Persistent and draggable Mini stats**: now remembers for your last 10 videos if its visible and its position.
 - **Connection speed**: Mini Stats now displays your connection speed from youtube's stats for nerds.
 - **Better Latency, dropped frames & Buffer**: now gets stats from youtube's stats for nerds instead of doing it with my old way.
-- **Live Viewer Count (Holodex only)**: Added real-time "Watching" stats directly to the Mini Stats overlay. In Holodex, there's no way to see the current number of live viewers without closing the embed to check the mini icon or viewing the stream directly on YouTube.
+- **Live Viewer Count (Holodex only)**: Added real-time "Watching" stats directly to the Mini Stats overlay. In Holodex, there's no way to see the current number of live viewers without closing the embed then check the icons at the top or viewing the stream directly on YouTube.
 
 ---
 
@@ -95,6 +105,12 @@ Choose one of the following:
 - Open the [youtube-embed-enhancer.user.js](https://raw.githubusercontent.com/jmpatag/YouTube-Embed-Enhancer/main/youtube-embed-enhancer.user.js) file.
 - Click raw.
 - Your userscript manager will prompt you → click **Install**.
+
+---
+
+## 🛠️ Credits
+
+This project uses [Mediabunny](https://github.com/Vanilagy/mediabunny) (MIT License) for media processing.
 
 ---
 

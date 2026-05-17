@@ -6,6 +6,16 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ---
 
+## ✨ New in v2.6.0
+
+- **UI & Settings Revamp**: Fresh new design and an easy-to-navigate tabbed layout.
+- **NexusMods Fullscreen Support**: Double-clicking to fullscreen or using the native YouTube fullscreen button now works on NexusMods. (Let me know if you want other sites added)
+- **Media Asset Tools**: Added thumbnail and profile picture downloaders.
+- **Holodex Volume Sync Fix**: Fixed broken volume syncing between Holodex media controls and YouTube.
+- **Recording Improvements**: Added bitrate presets for Instant Replay (Very Low → Very High). Note: Higher bitrate increases quality and file size, but uses more system resources.
+- **Fix**: Bugs.
+---
+
 ## ✨ New in v2.5.0
 
 - **Instant Replay**: New Feature. Similar to AMD Relive and Nvidia Shadowplay but for youtube embeds. allows you to save the last X(Configurable) seconds of the video that you can share with your friends/groups.
@@ -59,20 +69,35 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 
 ### ⏩ Playback Speed Control
 - **Click** the speed button to cycle (0.25x → 2x).
-- **Shift + Click** (or scroll) for **fine adjustment (0.05x)**.
+- **Shift + Click** (or scroll) for **fine adjustment (0.01x)**.
 - **Right-click** to reset to **1x**.
-- Use **. and , keys** or **scroll wheel** while hovering over the button (configurable).
+- Use **. and , keys** or **scroll wheel** while hovering over the button.
+
+### ⏪ Instant Replay
+- **Save the last X seconds** of the video (configurable, up to 60s).
+- Similar to AMD ReLive or Nvidia Shadowplay but for YouTube embeds.
+- **Single-click download** or use a hotkey to grab a high-quality clip of what just happened.
+- **Adjustable Quality**: Choose between bitrate presets from Very Low to Very High.
+ *Note: Higher bitrate increases quality and file size, but uses more system resources.*
+
+### 🎬 Video Clipping
+- **Record MP4 clips** directly from the video.
+- **Ctrl + Click** for longer clips (up to 5 minutes).
+- **Smart Initialization**: Ensures clips have proper metadata (ftyp/moov) for maximum compatibility.
+- Duration is configurable in settings.
+- *Note: Higher resolutions and durations require more system resources.*
 
 ### 📸 Screenshot Tool
 - Click the **Snap button** to copy the current frame to clipboard.
 - **Ctrl + Click** → Save locally as PNG and copy to clipboard.
-- **Smart Filenames**: Automatically named as `ChannelName_MM-SS-mmm.png`.
+- **Smart Filenames**: Automatically named as `ChannelName_Screenshot_MM-SS.png`.
 
-### 🎬 Video Clipping
-- **Record WebM clips** from the video.
-- **Ctrl + Click** for longer clips (5 minutes).
-- Duration is configurable in settings.
-- *Note: Higher resolutions require more system resources.*
+### 🖼️ Media Asset Tools
+- **Thumbnail Downloader**: Download the maximum resolution thumbnail of the video.
+- **Profile Picture (PFP) Downloader**: Download the channel's high-resolution avatar.
+- **How to use**:
+  *   Open **Settings (⚙️) → Tools tab** to find direct download buttons.
+  *   Alternatively, enable the dedicated **Thumb** and **PFP** buttons in the **Interface tab** to add them to your player toolbar.
 
 ### 🖼️ Picture-in-Picture (PiP)
 - Click the **PiP button** (bottom-right corner) to pop the video out.
@@ -89,7 +114,6 @@ The latest YouTube embed UI update removed proper volume control, limiting users
 ### 📊 Advanced (Stats for Nerds)
 - Press **Shift + S** or click the **Stats button**.
 - **Ctrl + Click** for a tiny overlay showing connection speed, buffer, latency, dropped frames, and live viewer info.
-
 ---
 
 ## 🛠️ Installation

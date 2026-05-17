@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.5.0
+// @version      2.6.0
 // @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
 // @author       jmpatag
 // @license      GPL-3.0
 // @match        *://www.youtube.com/embed/*
 // @match        *://www.youtube-nocookie.com/embed/*
+// @match        *://www.nexusmods.com/*
 // @run-at       document-idle
 // @require      https://cdn.jsdelivr.net/gh/jmpatag/YouTube-Embed-Enhancer@d1794faf5525827065cf5348d5cea7d21c5aa0a1/mediabunny.min.cjs
 // @grant        GM_getValue
@@ -14,13 +15,48 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_xmlhttpRequest
 // @connect      holodex.net
+// @connect      www.youtube.com
 // @grant        unsafeWindow
-// @updateURL    https://raw.githubusercontent.com/jmpatag/YouTube-Embed-Enhancer/main/youtube-embed-enhancer.user.js
-// @downloadURL  https://raw.githubusercontent.com/jmpatag/YouTube-Embed-Enhancer/main/youtube-embed-enhancer.user.js
+// @downloadURL https://update.greasyfork.org/scripts/572481/YouTube%20Embed%20Enhancer.user.js
+// @updateURL https://update.greasyfork.org/scripts/572481/YouTube%20Embed%20Enhancer.meta.js
 // ==/UserScript==
 
 (() => {
   "use strict";
+
+  if (window.self === window.top) {
+    const fixIframes = () => {
+      document.querySelectorAll('iframe[src*="youtube.com/embed"]').forEach(iframe => {
+        if (!iframe.hasAttribute('allowfullscreen')) iframe.setAttribute('allowfullscreen', '');
+        const allow = iframe.getAttribute('allow') || '';
+        if (!allow.includes('fullscreen')) iframe.setAttribute('allow', (allow ? allow + '; ' : '') + 'fullscreen');
+      });
+    };
+    fixIframes();
+    new MutationObserver(fixIframes).observe(document.documentElement, { childList: true, subtree: true });
+
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'YTEE_REQUEST_FULLSCREEN') {
+        const iframes = document.querySelectorAll('iframe');
+        for (const f of iframes) {
+          if (f.contentWindow === e.source) {
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
+            else f.requestFullscreen().catch(err => console.warn('YTEE: Parent fullscreen failed', err));
+            break;
+          }
+        }
+      }
+    });
+
+    document.addEventListener('dblclick', (e) => {
+      const iframe = e.target.closest('iframe[src*="youtube.com/embed"]')
+        ?? document.querySelector('iframe[src*="youtube.com/embed"]');
+      if (!iframe) return;
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
+      else iframe.requestFullscreen().catch(() => { });
+    }, { passive: true });
+    return;
+  }
 
   const isControlsDisabled = new URLSearchParams(window.location.search).get("controls") === "0";
   const isPlayButtonMissing = !document.querySelector(".ytp-play-button");
@@ -29,7 +65,10 @@
     if (href.includes('live_chat') || href.includes('livechat') || href.includes('chat_replay') || href.includes('is_chat=1')) return true;
     if (document.querySelector('yt-live-chat-renderer, yt-live-chat-app, #chat-messages, #live-chat-frame')) return true;
     if (document.documentElement.classList.contains('yt-live-chat-app') || (window.name && window.name.toLowerCase().includes('chat'))) return true;
-    if (window.innerWidth < 400 && window.innerHeight > window.innerWidth) return true;
+
+    // removing this for now
+    // if (window.innerWidth < 400 && window.innerHeight > window.innerWidth) return true;
+
     return false;
   };
 
@@ -52,13 +91,15 @@
   --ytee-font-size: clamp(11px,  calc(var(--ytee-ew) * 0.0175), 15px);
   --ytee-gap: clamp(2.5px,  calc(var(--ytee-ew) * 0.00375), 5px);
 
-  --ytee-bg-dark: rgba(15, 15, 15, 0.75);
-  --ytee-bg-medium: rgba(25, 25, 25, 0.65);
+  --ytee-bg-dark: rgba(15, 15, 15, 0.95);
+  --ytee-bg-medium: rgba(30, 30, 30, 0.85);
   --ytee-btn-bg: rgba(255,255,255,0.08);
   --ytee-btn-border: rgba(255,255,255,0.13);
   --ytee-btn-hover: rgba(255,255,255,0.19);
   --ytee-text: rgba(255,255,255,0.92);
 
+  --ytee-accent: #10b981;
+  --ytee-accent-rgb: 16, 185, 129;
   --ytee-stats-color: #ffd700;
   --ytee-stats-bg: rgba(255,215,0,0.14);
   --ytee-stats-border: rgba(255,215,0,0.55);
@@ -70,10 +111,10 @@
   --ytee-rec-bg: rgba(255,68,68,0.15);
   --ytee-rec-border: rgba(255,68,68,0.65);
 
-  --ytee-anim-fast: 0.08s cubic-bezier(0.4,0,0.2,1);
-  --ytee-anim-normal: 0.15s cubic-bezier(0.4,0,0.2,1);
-  --ytee-anim-slow: 0.25s cubic-bezier(0.4,0,0.2,1);
-  --ytee-radius: 5px;
+  --ytee-anim-fast: 0.1s cubic-bezier(0.4,0,0.2,1);
+  --ytee-anim-normal: 0.2s cubic-bezier(0.4,0,0.2,1);
+  --ytee-anim-slow: 0.3s cubic-bezier(0.4,0,0.2,1);
+  --ytee-radius: 12px;
 }
 
 [data-ytee-high-contrast="1"] {
@@ -299,6 +340,7 @@ player-fullscreen-action-menu { display: none !important; }
 .ytee-btn .ytee-label { display: none; }
 
 /* Tooltips — shown in icon mode only */
+.ytee-btn:not([data-tip])::after, .ytee-btn[data-tip=""]::after { display: none !important; }
 .ytee-btn::after {
   content: attr(data-tip);
   position: absolute;
@@ -408,103 +450,144 @@ player-fullscreen-action-menu { display: none !important; }
 }
 .ytee-btn.error svg { fill: #ff4444; }
 
-/* Settings Modal */
-@keyframes ytee-modal-in {
-  from { opacity:0; transform: scale(0.96) translateY(8px); }
-  to   { opacity:1; transform: scale(1) translateY(0); }
-}
 #custom-settings-modal {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.78);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  background: rgba(0,0,0,0.82);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   z-index: 10000; display: none;
   align-items: center; justify-content: center;
 }
 #custom-settings-modal.show { display: flex; }
 #custom-settings-content {
-  background: linear-gradient(160deg,rgba(22,22,28,0.97) 0%,rgba(14,14,18,0.97) 100%);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 14px;
-  padding: 16px 18px 14px;
-  width: min(480px,96vw);
-  max-height: 90vh;
-  overflow-y: auto; overflow-x: hidden;
+  background: #1e1e1e;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  padding: 0;
+  width: min(560px, 94vw);
+  max-height: 85vh;
+  display: flex; flex-direction: column;
+  overflow: hidden;
   color: white;
-  font-family: system-ui,-apple-system,sans-serif;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04) inset;
-  animation: ytee-modal-in 0.2s cubic-bezier(0.34,1.56,0.64,1) both;
+  font-family: system-ui, -apple-system, sans-serif;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.02) inset;
+  animation: ytee-modal-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+#ytee-settings-header {
+  padding: 18px 24px 12px;
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+#ytee-settings-header div:first-child { flex: 1; }
+#custom-settings-content h2 { margin:0; font-size:18px; font-weight:750; color:#fff; letter-spacing:-0.01em; }
+#ytee-settings-subtitle { font-size:11.5px; color:rgba(255,255,255,0.45); margin:2px 0 0; }
+
+/* Tabs */
+#ytee-settings-tabs {
+  display: flex; padding: 0 16px; gap: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.ytee-tab {
+  padding: 10px 15px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.4);
+  cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.25s;
+  user-select: none; display: flex; align-items: center; gap: 6px; border-radius: 8px 8px 0 0;
+}
+.ytee-tab .ytee-icon svg { width: 14px; height: 14px; }
+.ytee-tab .ytee-icon { opacity: 0.5; transition: opacity 0.25s; transform: scale(0.9); }
+.ytee-tab:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.04); }
+.ytee-tab.active { color: var(--ytee-accent); border-bottom-color: var(--ytee-accent); }
+.ytee-tab.active .ytee-icon { opacity: 1; color: var(--ytee-accent); transform: scale(1); }
+
+#custom-settings-items {
+  flex: 1; overflow-y: auto; padding: 14px 24px;
   scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent;
 }
-#custom-settings-content::-webkit-scrollbar { width: 4px; }
-#custom-settings-content::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:99px; }
-#custom-settings-content h2 { margin:0 0 2px; font-size:15px; font-weight:700; letter-spacing:-0.01em; color:rgba(255,255,255,0.95); }
-#ytee-settings-subtitle { font-size:11px; color:rgba(255,255,255,0.35); margin:0 0 12px; letter-spacing:0.01em; }
+#custom-settings-items::-webkit-scrollbar { width: 5px; }
+#custom-settings-items::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:10px; }
+
+.ytee-tab-content { display: none; }
+.ytee-tab-content.active { display: block; animation: ytee-modal-in 0.25s ease-out; }
+
 #custom-settings-content h3.setting-section-title {
-  display:flex; align-items:center; gap:8px;
-  margin:14px 0 2px; font-size:10px; font-weight:700;
-  color:rgba(255,255,255,0.38); text-transform:uppercase; letter-spacing:0.15em;
+  margin: 10px 0 10px; font-size: 10px; font-weight: 800;
+  color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.15em;
 }
-#custom-settings-content h3.setting-section-title::before {
-  content:''; display:block; width:3px; height:14px; border-radius:99px; flex-shrink:0;
-  background:linear-gradient(to bottom,rgba(119,221,255,0.9),rgba(119,221,255,0.2));
-}
-#custom-settings-content h3.setting-section-title::after { content:''; flex:1; height:1px; background:rgba(255,255,255,0.06); }
+
 #custom-settings-content .setting-item {
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
-  padding:7px 10px; margin:2px 0; border-radius:8px; border:1px solid transparent;
-  transition: background 0.15s, border-color 0.15s;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; margin-bottom: 8px; border-radius: 12px;
+  background: #282828; border: 1px solid rgba(255,255,255,0.03);
+  transition: all 0.2s;
 }
-#custom-settings-content .setting-item:hover { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.07); }
-#custom-settings-content .setting-item label:not(.ytee-toggle-track) {
-  flex:1; font-size:13.5px; font-weight:500; color:rgba(255,255,255,0.85); cursor:pointer; user-select:none;
-}
-.ytee-toggle-wrap { position:relative; width:38px; height:22px; flex:0 0 38px; flex-shrink:0; }
-.ytee-toggle-wrap input[type="checkbox"] { opacity:0; width:0; height:0; position:absolute; }
+#custom-settings-content .setting-item:hover { background: #2d2d2d; border-color: rgba(255,255,255,0.08); }
+
+.setting-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.setting-title { font-size: 13.5px; font-weight: 700; color: #fff; cursor: pointer; }
+.setting-desc { font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.3; }
+
+.ytee-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.ytee-grid-2 .setting-item { margin-bottom: 0; padding: 10px 14px; }
+
+.ytee-toggle-wrap { position:relative; width:44px; height:24px; flex-shrink:0; }
+.ytee-toggle-wrap input { opacity:0; width:0; height:0; position:absolute; }
 .ytee-toggle-track {
   position:absolute; inset:0; border-radius:99px;
-  background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.12);
-  transition: background 0.2s, border-color 0.2s; cursor:pointer;
+  background:rgba(255,255,255,0.12); transition: all 0.25s ease; cursor:pointer;
 }
 .ytee-toggle-thumb {
-  position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%;
-  background:rgba(255,255,255,0.5);
-  transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1), background 0.2s;
-  pointer-events:none;
+  position:absolute; top:4px; left:4px; width:16px; height:16px; border-radius:50%;
+  background:#fff; transition: all 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
-.ytee-toggle-wrap input:checked ~ .ytee-toggle-track { background:rgba(119,221,255,0.25); border-color:rgba(119,221,255,0.6); }
-.ytee-toggle-wrap input:checked ~ .ytee-toggle-track .ytee-toggle-thumb { transform:translateX(16px); background:#7ddeff; }
-#custom-settings-content .hk-input {
-  width:108px; padding:7px 11px;
-  background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
-  border-radius:8px; color:rgba(255,255,255,0.9);
-  font-size:12px; font-family:ui-monospace,'Cascadia Code',monospace;
-  font-weight:600; letter-spacing:0.04em; text-transform:lowercase;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s; flex-shrink:0;
+.ytee-toggle-wrap input:checked ~ .ytee-toggle-track { background: var(--ytee-accent); }
+.ytee-toggle-wrap input:checked ~ .ytee-toggle-track .ytee-toggle-thumb { transform:translateX(20px); }
+
+#custom-settings-content .hk-input, #custom-settings-content .ytee-quality-select {
+  width: 120px; padding: 8px 12px;
+  background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px; color: #fff; font-size: 12.5px; font-weight: 600;
+  font-family: ui-monospace, monospace; transition: all 0.2s; text-align: right;
 }
-#custom-settings-content .hk-input:focus { outline:none; background:rgba(119,221,255,0.06); border-color:rgba(119,221,255,0.5); box-shadow:0 0 0 3px rgba(119,221,255,0.1); }
-#custom-settings-content input[type="range"] { -webkit-appearance:none; appearance:none; height:4px; border-radius:99px; background:rgba(255,255,255,0.12); outline:none; cursor:pointer; flex-shrink:0; }
-#custom-settings-content input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,0.4); transition:transform 0.12s,box-shadow 0.12s; }
-#custom-settings-content input[type="range"]:hover::-webkit-slider-thumb { transform:scale(1.15); box-shadow:0 2px 8px rgba(0,0,0,0.5); }
-#custom-settings-content input[type="range"]::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#fff; border:none; box-shadow:0 1px 4px rgba(0,0,0,0.4); }
-#custom-settings-content input[type="range"]::-moz-range-track { height:4px; border-radius:99px; background:rgba(255,255,255,0.12); }
-.ytee-slider-value { font-size:12px; font-weight:700; font-family:ui-monospace,monospace; color:rgba(255,255,255,0.5); min-width:40px; text-align:right; flex-shrink:0; }
-.setting-note { display:block; font-size:11px; color:rgba(255,255,255,0.3); margin:4px 14px 12px; line-height:1.4; font-style:italic; }
-#custom-settings-buttons { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:14px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.07); }
-#custom-settings-restore { margin-right:auto; padding:8px 14px; background:transparent; border:1px solid rgba(255,80,80,0.3); border-radius:9px; color:rgba(255,110,110,0.8); cursor:pointer; font-size:12.5px; font-weight:600; transition:background 0.15s,border-color 0.15s,color 0.15s; }
-#custom-settings-restore:hover { background:rgba(255,60,60,0.1); border-color:rgba(255,80,80,0.6); color:#ff8080; }
-#custom-settings-cancel { padding:8px 16px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:9px; color:rgba(255,255,255,0.6); cursor:pointer; font-size:13px; font-weight:600; transition:background 0.15s,color 0.15s; }
-#custom-settings-cancel:hover { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.9); }
-#custom-settings-save { padding:8px 20px; background:rgba(119,221,255,0.15); border:1px solid rgba(119,221,255,0.45); border-radius:9px; color:#7ddeff; cursor:pointer; font-size:13px; font-weight:700; letter-spacing:0.01em; transition:background 0.15s,border-color 0.15s,box-shadow 0.15s; }
-#custom-settings-save:hover { background:rgba(119,221,255,0.25); border-color:rgba(119,221,255,0.7); box-shadow:0 0 14px rgba(119,221,255,0.15); }
-.ytee-quality-select {
-  padding:7px 11px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
-  border-radius:8px; color:rgba(255,255,255,0.9); font-size:12px;
-  font-family:ui-monospace,'Cascadia Code',monospace; font-weight:600; letter-spacing:0.04em;
-  cursor:pointer; flex-shrink:0; transition:border-color 0.15s,box-shadow 0.15s,background 0.15s;
-  appearance:none; -webkit-appearance:none;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='rgba(255,255,255,0.4)'/></svg>");
-  background-repeat:no-repeat; background-position:right 10px center; padding-right:28px;
+#custom-settings-content .hk-input:focus, #custom-settings-content .ytee-quality-select:focus {
+  outline:none; border-color:var(--ytee-accent); background: #222;
+  box-shadow: 0 0 0 3px rgba(var(--ytee-accent-rgb), 0.15);
 }
+
+#custom-settings-content input[type="range"] {
+  -webkit-appearance:none; appearance:none; height:4px; border-radius:99px;
+  background:rgba(255,255,255,0.1); outline:none; cursor:pointer; width: 140px;
+}
+#custom-settings-content input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#fff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.4); transition: transform 0.15s;
+}
+#custom-settings-content input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+
+.ytee-slider-value { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.6); min-width: 32px; text-align: right; }
+
+#custom-settings-buttons {
+  display:flex; align-items:center; justify-content:flex-end; gap:10px;
+  padding:16px 24px; background: rgba(0,0,0,0.15); border-top:1px solid rgba(255,255,255,0.06);
+}
+#custom-settings-restore {
+  margin-right:auto; padding:8px 14px; background:transparent; border:1px solid rgba(255,255,255,0.1);
+  border-radius:8px; color:rgba(255,255,255,0.6); cursor:pointer; font-size:12.5px; font-weight:600;
+  transition: all 0.2s;
+}
+#custom-settings-restore:hover { background:rgba(255,255,255,0.05); color:#fff; border-color:rgba(255,255,255,0.2); }
+
+#custom-settings-cancel, #custom-settings-save {
+  padding:8px 18px; border-radius:8px; font-size:13.5px; font-weight:700; cursor:pointer; transition: all 0.2s;
+}
+#custom-settings-cancel { background:rgba(255,255,255,0.06); border:none; color:rgba(255,255,255,0.85); }
+#custom-settings-cancel:hover { background:rgba(255,255,255,0.12); color:#fff; }
+
+#custom-settings-save {
+  background: var(--ytee-accent); border: none; color: #000;
+}
+#custom-settings-save:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(var(--ytee-accent-rgb), 0.3); }
+
+.ytee-quality-select { cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='rgba(255,255,255,0.4)'><path d='M0 0l5 6 5-6z'/></svg>"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px !important; }
+.ytee-quality-select option { background:#1a1a22; color:white; }
 .ytee-quality-select:focus { outline:none; background-color:rgba(119,221,255,0.06); border-color:rgba(119,221,255,0.5); box-shadow:0 0 0 3px rgba(119,221,255,0.1); }
 .ytee-quality-select option { background:#1a1a22; color:white; }
 .ytee-quality-note { display:block; font-size:11px; color:rgba(255,255,255,0.3); margin:4px 14px 12px; line-height:1.4; font-style:italic; }
@@ -571,6 +654,13 @@ player-fullscreen-action-menu { display: none !important; }
     hide: () => mkSvgEl({ tag: 'path', attrs: { d: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z' } }),
     expand: () => mkSvgEl({ tag: 'path', attrs: { d: 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z' } }),
     info: () => mkSvgEl({ tag: 'path', attrs: { d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z' } }),
+    thumb: () => mkSvgEl({ tag: 'path', attrs: { d: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-5.04-6.71l-2.75 3.54-1.96-2.36L6.5 17h11l-3.54-4.71z' } }),
+    avatar: () => mkSvgEl({ tag: 'path', attrs: { d: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' } }),
+    general: () => mkSvgEl({ tag: 'path', attrs: { d: 'M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z' } }),
+    tools: () => mkSvgEl({ tag: 'path', attrs: { d: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.5 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z' } }),
+    interface: () => mkSvgEl({ tag: 'path', attrs: { d: 'M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z' } }),
+    hotkeys: () => mkSvgEl({ tag: 'path', attrs: { d: 'M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z' } }),
+    download: () => mkSvgEl({ tag: 'path', attrs: { d: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z' } }),
   };
 
   const mkBtn = (id, iconKey, labelText, tipText, titleText, isCollapsible = true) => {
@@ -612,16 +702,18 @@ player-fullscreen-action-menu { display: none !important; }
 
   // Settings
   const defaultSettings = {
-    buttons: { wl: true, url: true, screenshot: true, clip: true, replay: true, pip: true, speed: true, stats: true, vol: true },
+    buttons: { wl: true, url: true, thumb: false, pfp: false, screenshot: true, clip: true, replay: true, pip: true, speed: true, stats: true, vol: true },
     hotkeys: {
       toggleMute: 'm',
       toggleStats: 'shift+s',
+      toggleMiniStats: 'alt+s',
       increaseSpeed: '.',
       decreaseSpeed: ',',
       increaseSpeedFine: 'shift+.',
       decreaseSpeedFine: 'shift+,',
       volumeUp: 'arrowup',
       volumeDown: 'arrowdown',
+      toggleSettings: 'q',
     },
     volumeBoostLevel: 1,
     enableVolumeBoost: true,
@@ -631,6 +723,7 @@ player-fullscreen-action-menu { display: none !important; }
     clipDuration: 5,
     clipDurationCtrl: 300,
     instantReplayDuration: 30,
+    instantReplayQuality: 'medium',
     preferredQuality: 'auto',
     compactMode: false,
     isCollapsed: false,
@@ -673,6 +766,7 @@ player-fullscreen-action-menu { display: none !important; }
       clipDuration: typeof s.clipDuration === 'number' ? Math.min(300, Math.max(1, s.clipDuration)) : defaultSettings.clipDuration,
       clipDurationCtrl: typeof s.clipDurationCtrl === 'number' ? Math.min(300, Math.max(1, s.clipDurationCtrl)) : defaultSettings.clipDurationCtrl,
       instantReplayDuration: typeof s.instantReplayDuration === 'number' ? Math.min(60, Math.max(1, s.instantReplayDuration)) : defaultSettings.instantReplayDuration,
+      instantReplayQuality: typeof s.instantReplayQuality === 'string' ? s.instantReplayQuality : defaultSettings.instantReplayQuality,
       preferredQuality: typeof s.preferredQuality === 'string' ? s.preferredQuality : defaultSettings.preferredQuality,
       compactMode: typeof s.compactMode === 'boolean' ? s.compactMode : (typeof s.labelMode === 'boolean' ? !s.labelMode : defaultSettings.compactMode),
       isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : defaultSettings.isCollapsed,
@@ -682,11 +776,11 @@ player-fullscreen-action-menu { display: none !important; }
       miniStatsCache: typeof s.miniStatsCache === 'object' ? s.miniStatsCache : defaultSettings.miniStatsCache,
       miniStatsPos: s.miniStatsPos || defaultSettings.miniStatsPos,
     };
-    // memory remembers 10
+    // memory remembers 30
     ['volumeCache', 'miniStatsCache'].forEach(cacheKey => {
       const keys = Object.keys(rs[cacheKey]);
-      if (keys.length > 10) {
-        keys.slice(0, keys.length - 10).forEach(k => delete rs[cacheKey][k]);
+      if (keys.length > 30) {
+        keys.slice(0, keys.length - 30).forEach(k => delete rs[cacheKey][k]);
       }
     });
     return rs;
@@ -719,6 +813,8 @@ player-fullscreen-action-menu { display: none !important; }
       const data = player.getVideoData();
       if (data?.author) return data.author.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').trim();
     }
+    const authorEl = document.querySelector('.ytp-title-channel-name, .ytp-title-expanded-title .ytp-title-link');
+    if (authorEl && authorEl.textContent) return authorEl.textContent.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').trim();
     return 'YouTube';
   };
 
@@ -749,9 +845,43 @@ player-fullscreen-action-menu { display: none !important; }
     setTimeout(() => btn.classList.remove(state), duration);
   };
 
+  const downloadUrlAsFile = (url, baseFilename) => {
+    if (typeof GM_xmlhttpRequest === 'undefined') { window.open(url, '_blank'); return; }
+    GM_xmlhttpRequest({
+      method: 'GET', url: url, responseType: 'blob',
+      onload: (res) => {
+        if (res.status === 200) {
+          const blob = res.response;
+          const mime = blob.type || '';
+          let ext = 'jpg';
+          if (mime.includes('png')) ext = 'png';
+          else if (mime.includes('webp')) ext = 'webp';
+          else if (mime.includes('gif')) ext = 'gif';
+          const objUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = objUrl; a.download = `${baseFilename}.${ext}`; a.click();
+          URL.revokeObjectURL(objUrl);
+        } else { window.open(url, '_blank'); }
+      },
+      onerror: () => { window.open(url, '_blank'); }
+    });
+  };
+
   // Main
   waitForVideo((video) => {
     if (isChat() || (video.offsetWidth === 0 && video.offsetHeight === 0)) return;
+
+    if (!document.fullscreenEnabled && window.self !== window.top) {
+      const handleRequest = function () {
+        window.parent.postMessage({ type: 'YTEE_REQUEST_FULLSCREEN' }, '*');
+        return Promise.resolve();
+      };
+      const proto = Element.prototype;
+      ['requestFullscreen', 'webkitRequestFullscreen', 'mozRequestFullScreen', 'msRequestFullscreen'].forEach(m => {
+        if (proto[m]) proto[m] = handleRequest;
+      });
+      if (HTMLVideoElement.prototype.webkitEnterFullscreen) HTMLVideoElement.prototype.webkitEnterFullscreen = handleRequest;
+    }
 
     let targetVolume = video.volume;
     let targetMuted = video.muted;
@@ -808,6 +938,8 @@ player-fullscreen-action-menu { display: none !important; }
     tryHookQuality();
 
     let scriptChangeDepth = 0;
+    let playerReady = false;
+    setTimeout(() => { playerReady = true; }, 2500);
     let audioContext = null, gainNode = null, recordingGain = null, mediaSource = null, virtualMuted = video.muted, audioSetupFailed = false;
     let activeStream = null, clipAudioDestination = null, audioHooked = false;
     let volTimeout, speedTimeout, controlsTimeout, clipRafId = null;
@@ -837,7 +969,6 @@ player-fullscreen-action-menu { display: none !important; }
         recordingGain.gain.value = 1.0;
         mediaSource.connect(recordingGain);
 
-        video.volume = 1;
         if (audioContext.state === 'suspended') audioContext.resume().catch(() => { });
       } catch (e) {
         console.warn('Web Audio setup failed', e);
@@ -846,10 +977,10 @@ player-fullscreen-action-menu { display: none !important; }
       }
     };
 
-    const setGain = (linearVolume) => {
+    const setGain = () => {
       if (!gainNode || !audioContext) return;
       if (audioContext.state === 'suspended') audioContext.resume().catch(() => { });
-      gainNode.gain.setTargetAtTime(linearVolume * getBoostLevel(), audioContext.currentTime, 0.01);
+      gainNode.gain.setTargetAtTime(getBoostLevel(), audioContext.currentTime, 0.01);
     };
 
     const applyAudioState = (volume, muted) => {
@@ -874,15 +1005,17 @@ player-fullscreen-action-menu { display: none !important; }
           }
           if (!gainNode) setupWebAudio();
         }
-        if (currentSettings.enableVolumeBoost && gainNode) {
-          setGain(targetMuted ? 0 : targetVolume);
+
+        const p = getPlayer();
+        if (targetMuted) {
+          if (p && typeof p.mute === 'function') p.mute(); else video.muted = true;
         } else {
-          const p = getPlayer();
-          if (targetMuted) { if (p && typeof p.mute === 'function') p.mute(); else video.muted = true; }
-          else {
-            if (p && typeof p.unMute === 'function') p.unMute(); else video.muted = false;
-            if (p && typeof p.setVolume === 'function') p.setVolume(Math.round(targetVolume * 100)); else video.volume = targetVolume;
-          }
+          if (p && typeof p.unMute === 'function') p.unMute(); else video.muted = false;
+          if (p && typeof p.setVolume === 'function') p.setVolume(Math.round(targetVolume * 100)); else video.volume = targetVolume;
+        }
+
+        if (currentSettings.enableVolumeBoost && gainNode) {
+          setGain();
         }
       } finally { scriptChangeDepth--; }
     };
@@ -938,16 +1071,31 @@ player-fullscreen-action-menu { display: none !important; }
 
     video.addEventListener("volumechange", () => {
       if (scriptChangeDepth > 0) return;
-      if (gainNode) { muteBtn.classList.toggle("muted", video.muted); return; }
-      targetMuted = video.muted;
-      targetVolume = video.muted ? targetVolume : video.volume;
+      if (!playerReady) return;
+
+      const newMuted = video.muted;
+      const newVol = video.volume;
+
+      targetMuted = newMuted;
+      if (!newMuted) targetVolume = newVol;
+
       muteBtn.classList.toggle("muted", targetMuted);
       const displayVol = targetMuted ? 0 : targetVolume;
       if (Number(vol.value) !== displayVol) vol.value = displayVol;
+
+      if (gainNode) setGain();
+
+      showVolumePercent(displayVol);
+
+      const vid = getVideoId(getPlayer());
+      if (vid) {
+        currentSettings.volumeCache[vid] = targetVolume;
+        saveStoredSettings(currentSettings);
+      }
     });
 
     let isHoveringSpeedBtn = false;
-    let pendingWheelDelta = 0, wheelRafId = 0;
+    let pendingWheelDelta = 0, wheelRafId = 0, lastWheelShift = false;
     const onWheel = (e) => {
       if (isSettingsOpen) {
         if (settingsContent.contains(e.target)) return;
@@ -961,13 +1109,16 @@ player-fullscreen-action-menu { display: none !important; }
 
       e.preventDefault();
       pendingWheelDelta += e.deltaY;
+      lastWheelShift = e.shiftKey;
       if (wheelRafId) return;
       wheelRafId = requestAnimationFrame(() => {
         const delta = pendingWheelDelta;
+        const isShift = lastWheelShift;
         pendingWheelDelta = 0;
         wheelRafId = 0;
         if (shouldHandleSpeed) {
-          applySpeed(targetSpeed + (delta > 0 ? -SPEED_STEP : SPEED_STEP));
+          const step = isShift ? SPEED_STEP_FINE : SPEED_STEP;
+          applySpeed(targetSpeed + (delta > 0 ? -step : step));
         } else if (shouldHandleVolume) {
           applyVolume(targetVolume + (delta > 0 ? -(currentSettings.volumeStep / 100) : (currentSettings.volumeStep / 100)));
         }
@@ -1184,7 +1335,7 @@ player-fullscreen-action-menu { display: none !important; }
     statsBtn.addEventListener("click", toggleStats);
 
     // Speed
-    const SPEED_MIN = 0.1, SPEED_MAX = 16, SPEED_STEP = 0.05, SPEED_STEP_FINE = 0.01, SPEED_DEFAULT = 1;
+    const SPEED_MIN = 0.1, SPEED_MAX = 16, SPEED_STEP = 0.1, SPEED_STEP_FINE = 0.01, SPEED_DEFAULT = 1;
     let targetSpeed = Math.round((video.playbackRate || SPEED_DEFAULT) * 100) / 100;
 
     const speedBtn = mkBtn('custom-speed-btn', 'speed', targetSpeed + 'x', 'Speed', 'Playback Speed');
@@ -1220,30 +1371,39 @@ player-fullscreen-action-menu { display: none !important; }
       canvas.getContext("2d", { alpha: false }).drawImage(video, 0, 0);
       const author = getVideoAuthor(getPlayer());
       const timestamp = formatTimestamp(video.currentTime);
+
       canvas.toBlob((blob) => {
         if (!blob) return;
-        if (e.ctrlKey) {
+
+        const download = () => {
           const objUrl = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          a.href = objUrl; a.download = `${author}_${timestamp}.png`; a.click();
+          a.href = objUrl;
+          a.download = `${author}_${timestamp}.png`;
+          a.click();
           URL.revokeObjectURL(objUrl);
-        }
-        if (navigator.clipboard) {
-          if (typeof ClipboardItem !== "undefined") {
-            navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
-              .then(() => {
-                setBtnLabel(screenshotBtn, e.ctrlKey ? '✓ Saved!' : '✓ Copied!');
-                flashBtnState(screenshotBtn, 'success');
-                setTimeout(() => setBtnLabel(screenshotBtn), 1500);
-              })
-              .catch(() => {
-                setBtnLabel(screenshotBtn, '✗ Error');
-                flashBtnState(screenshotBtn, 'error');
-                setTimeout(() => setBtnLabel(screenshotBtn), 1500);
-              });
-          } else {
-            if (!e.ctrlKey) { setBtnLabel(screenshotBtn, '✗ N/A'); setTimeout(() => setBtnLabel(screenshotBtn, 'Snap'), 1500); }
-          }
+        };
+
+        if (e.ctrlKey) download();
+
+        if (navigator.clipboard && typeof ClipboardItem !== "undefined") {
+          navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+            .then(() => {
+              setBtnLabel(screenshotBtn, e.ctrlKey ? '✓ Saved!' : '✓ Copied!');
+              flashBtnState(screenshotBtn, 'success');
+              setTimeout(() => setBtnLabel(screenshotBtn), 1500);
+            })
+            .catch(() => {
+              if (!e.ctrlKey) download();
+              setBtnLabel(screenshotBtn, '✓ Saved!');
+              flashBtnState(screenshotBtn, 'success');
+              setTimeout(() => setBtnLabel(screenshotBtn), 1500);
+            });
+        } else {
+          if (!e.ctrlKey) download();
+          setBtnLabel(screenshotBtn, '✓ Saved!');
+          flashBtnState(screenshotBtn, 'success');
+          setTimeout(() => setBtnLabel(screenshotBtn), 1500);
         }
       }, "image/png");
     });
@@ -1254,6 +1414,10 @@ player-fullscreen-action-menu { display: none !important; }
     let clipRecorder = null;
 
     const remuxToMp4 = async (chunks, mimeType) => {
+      if (typeof Mediabunny === 'undefined') {
+        throw new Error('Mediabunny library not loaded');
+      }
+
       const blobs = chunks
         .map(c => c.data)
         .filter(b => b instanceof Blob && b.size > 0);
@@ -1394,15 +1558,23 @@ player-fullscreen-action-menu { display: none !important; }
         setBtnLabel(clipBtn, '✗ Error'); setTimeout(() => setBtnLabel(clipBtn), 2000); return;
       }
 
+      let clipInitChunk = null;
       recorder.ondataavailable = (ev) => {
-        if (ev.data && ev.data.size > 0) chunks.push({ data: ev.data, time: performance.now() });
+        if (!ev.data || ev.data.size === 0) return;
+        const chunk = { data: ev.data, time: performance.now() };
+        if (!clipInitChunk) {
+          clipInitChunk = chunk;
+        } else {
+          chunks.push(chunk);
+        }
       };
       recorder.onstop = async () => {
-        if (chunks.length === 0) { setBtnLabel(clipBtn, '✗ Empty'); setTimeout(() => setBtnLabel(clipBtn), 1500); return; }
+        const fullChunks = clipInitChunk ? [clipInitChunk, ...chunks] : chunks;
+        if (fullChunks.length === 0) { setBtnLabel(clipBtn, '✗ Empty'); setTimeout(() => setBtnLabel(clipBtn), 1500); return; }
 
         setBtnLabel(clipBtn, 'Processing...');
         try {
-          const mp4Blob = await remuxToMp4(chunks, mimeType);
+          const mp4Blob = await remuxToMp4(fullChunks, mimeType);
           const author = getVideoAuthor(getPlayer());
           const timestamp = formatTimestamp(video.currentTime);
           const objUrl = URL.createObjectURL(mp4Blob);
@@ -1450,6 +1622,12 @@ player-fullscreen-action-menu { display: none !important; }
     //Instant Replay
     const replayOverlay = Object.assign(document.createElement('div'), { id: 'custom-replay-overlay' });
     const replayBtn = mkBtn('custom-replay-btn', 'rewind', 'Replay', 'Instant Replay • Right-click = stop', 'Instant Replay');
+
+    if (typeof Mediabunny === 'undefined') {
+      console.warn('YTEE: Mediabunny not loaded — clip/replay disabled');
+      clipBtn.style.display = 'none';
+      replayBtn.style.display = 'none';
+    }
 
     let replayRecorder = null;
     let replayStream = null, replayAudioDestination = null;
@@ -1527,10 +1705,19 @@ player-fullscreen-action-menu { display: none !important; }
 
         replayRetryCount = 0;
 
+        const qualityMap = {
+          'very low': { v: 1_000_000, a: 96_000 },
+          'low': { v: 2_500_000, a: 128_000 },
+          'medium': { v: 5_000_000, a: 192_000 },
+          'high': { v: 10_000_000, a: 256_000 },
+          'very high': { v: 20_000_000, a: 320_000 }
+        };
+        const q = qualityMap[currentSettings.instantReplayQuality] || qualityMap['medium'];
+
         replayRecorder = new MediaRecorder(replayStream, {
           mimeType: replayMimeType,
-          videoBitsPerSecond: 4_000_000,
-          audioBitsPerSecond: 192_000,
+          videoBitsPerSecond: q.v,
+          audioBitsPerSecond: q.a,
         });
         replayChunks = [];
         replayInitChunk = null;
@@ -1695,13 +1882,83 @@ player-fullscreen-action-menu { display: none !important; }
         const videoId = getVideoId(getPlayer());
         let url = `https://youtu.be/${videoId}`;
         if (e.ctrlKey) url += `?t=${Math.floor(video.currentTime)}`;
+
+        let copied = false;
         if (navigator.clipboard) {
-          await navigator.clipboard.writeText(url);
+          try {
+            await navigator.clipboard.writeText(url);
+            copied = true;
+          } catch (clipErr) {
+
+          }
+        }
+
+        if (!copied) {
+          const ta = document.createElement('textarea');
+          ta.value = url;
+          ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          copied = document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+
+        if (copied) {
           setBtnLabel(urlBtn, '✓ Copied!');
           flashBtnState(urlBtn, 'success');
           setTimeout(() => setBtnLabel(urlBtn), 1500);
+        } else {
+          throw new Error('All copy methods failed');
         }
-      } catch (err) { console.error("Copy URL failed:", err); flashBtnState(urlBtn, 'error'); }
+      } catch (err) {
+        console.error("Copy URL failed:", err);
+        flashBtnState(urlBtn, 'error');
+      }
+    });
+
+    // Thumbnail
+    const thumbBtn = mkBtn('custom-thumb-btn', 'thumb', 'Thumb', 'Get Thumbnail (Max Res)');
+    thumbBtn.addEventListener("click", () => {
+      const videoId = getVideoId(getPlayer());
+      if (videoId) {
+        window.open(`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`, '_blank');
+      }
+    });
+    // Profile Picture
+    const pfpBtn = mkBtn('custom-pfp-btn', 'avatar', 'PFP', 'Get Profile Picture');
+    pfpBtn.addEventListener("click", () => {
+      const videoId = getVideoId(getPlayer());
+      if (!videoId) return;
+      setBtnLabel(pfpBtn, '…');
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: `https://holodex.net/api/v2/videos/${videoId}?include=live_info`,
+        headers: { "Referer": "https://holodex.net/", "Origin": "https://holodex.net" },
+        onload: (r) => {
+          if (r.status === 200) {
+            try {
+              const json = JSON.parse(r.responseText);
+              const photo = json.channel?.photo;
+              if (photo) {
+                window.open(photo.replace(/=s\d+-c-k-c0x[0-9a-f]+-no-rj/, '=s0'), '_blank');
+                setBtnLabel(pfpBtn, '✓');
+                flashBtnState(pfpBtn, 'success');
+              } else { throw new Error('No photo'); }
+            } catch (e) {
+              console.error('YTEE: PFP fetch failed', e);
+              flashBtnState(pfpBtn, 'error');
+            }
+          } else {
+            flashBtnState(pfpBtn, 'error');
+          }
+          setTimeout(() => setBtnLabel(pfpBtn), 1500);
+        },
+        onerror: () => {
+          flashBtnState(pfpBtn, 'error');
+          setTimeout(() => setBtnLabel(pfpBtn), 1500);
+        }
+      });
     });
 
     // Watch Later
@@ -1807,18 +2064,24 @@ player-fullscreen-action-menu { display: none !important; }
     const settingsModal = document.createElement("div");
     settingsModal.id = "custom-settings-modal";
     let isSettingsOpen = false;
+
     const settingsContent = document.createElement("div");
     settingsContent.id = "custom-settings-content";
+
     const settingsHeader = Object.assign(document.createElement("div"), { id: "ytee-settings-header" });
+    const headerTitleWrap = document.createElement('div');
     const settingsTitle = Object.assign(document.createElement("h2"), { textContent: "YouTube Embed Enhancer" });
-    const infoBtn = Object.assign(document.createElement('div'), { className: 'ytee-info-btn', title: 'What do these stats mean?' });
+    const settingsSubtitle = Object.assign(document.createElement("p"), { id: "ytee-settings-subtitle", textContent: "Customize your experience" });
+    headerTitleWrap.append(settingsTitle, settingsSubtitle);
+
+    const infoBtn = Object.assign(document.createElement('div'), { className: 'ytee-info-btn', title: 'Legend' });
     infoBtn.appendChild(ICON_DEFS.info());
-    settingsHeader.append(settingsTitle, infoBtn);
+    settingsHeader.append(headerTitleWrap, infoBtn);
 
     const infoBox = Object.assign(document.createElement('div'), { className: 'ytee-info-box' });
     const mkInfoRow = (title, text) => {
       const p = document.createElement('p');
-      const s = document.createElement('strong'); s.textContent = title;
+      const s = Object.assign(document.createElement('strong'), { textContent: title });
       p.append(s, document.createTextNode(' ' + text));
       return p;
     };
@@ -1829,157 +2092,291 @@ player-fullscreen-action-menu { display: none !important; }
       mkInfoRow('Drop', 'If this rises, your PC is struggling and the video will look laggy or stutter.'),
       Object.assign(document.createElement('a'), {
         href: 'https://github.com/jmpatag/YouTube-Embed-Enhancer',
-        target: '_blank',
-        className: 'ytee-info-link',
-        textContent: 'Source: YouTube Embed Enhancer (GitHub)'
+        target: '_blank', className: 'ytee-info-link', textContent: 'GitHub Source'
       })
     );
     infoBtn.addEventListener('click', () => infoBox.classList.toggle('show'));
 
-    const settingsSubtitle = Object.assign(document.createElement("p"), { id: "ytee-settings-subtitle", textContent: "Customize your embed experience" });
+    // Tabs
+    const tabsContainer = Object.assign(document.createElement('div'), { id: 'ytee-settings-tabs' });
+    const tabItems = [
+      { id: 'tab-general', label: 'General' },
+      { id: 'tab-tools', label: 'Tools' },
+      { id: 'tab-interface', label: 'Interface' },
+      { id: 'tab-hotkeys', label: 'Hotkeys' }
+    ];
+    const tabs = {};
+    const tabContents = {};
+
+    tabItems.forEach((item, idx) => {
+      const tab = Object.assign(document.createElement('div'), { className: 'ytee-tab' });
+      const iconWrap = Object.assign(document.createElement('span'), { className: 'ytee-icon' });
+      iconWrap.appendChild(ICON_DEFS[item.id.replace('tab-', '')]());
+      tab.append(iconWrap, document.createTextNode(item.label));
+
+      if (idx === 0) tab.classList.add('active');
+      tab.addEventListener('click', () => {
+        Object.values(tabs).forEach(t => t.classList.remove('active'));
+        Object.values(tabContents).forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        tabContents[item.id].classList.add('active');
+      });
+      tabsContainer.appendChild(tab);
+      tabs[item.id] = tab;
+
+      const content = Object.assign(document.createElement('div'), { className: 'ytee-tab-content' });
+      if (idx === 0) content.classList.add('active');
+      tabContents[item.id] = content;
+    });
+
     const settingsItems = Object.assign(document.createElement("div"), { id: "custom-settings-items" });
+    Object.values(tabContents).forEach(c => settingsItems.appendChild(c));
+
     const settingsButtons = Object.assign(document.createElement("div"), { id: "custom-settings-buttons" });
     const restoreBtn = Object.assign(document.createElement("button"), { id: "custom-settings-restore", textContent: "Restore defaults" });
     const cancelBtn = Object.assign(document.createElement("button"), { id: "custom-settings-cancel", textContent: "Cancel" });
-    const saveBtn = Object.assign(document.createElement("button"), { id: "custom-settings-save", textContent: "Save" });
+    const saveBtn = Object.assign(document.createElement("button"), { id: "custom-settings-save", textContent: "Save changes" });
     settingsButtons.append(restoreBtn, cancelBtn, saveBtn);
-    settingsContent.append(settingsHeader, settingsSubtitle, infoBox, settingsItems, settingsButtons);
+
+    settingsContent.append(settingsHeader, tabsContainer, infoBox, settingsItems, settingsButtons);
     settingsModal.appendChild(settingsContent);
     document.body.appendChild(settingsModal);
 
-    const mkToggleRow = (id, labelText, checked) => {
+
+    const mkSection = (title) => Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: title });
+    const mkNote = (text) => Object.assign(document.createElement('div'), { className: 'setting-note', textContent: text });
+
+    const mkRow = (title, desc, control) => {
       const div = Object.assign(document.createElement('div'), { className: 'setting-item' });
+      const textWrap = Object.assign(document.createElement('div'), { className: 'setting-text' });
+      const lbl = Object.assign(document.createElement('label'), { className: 'setting-title', textContent: title });
+      if (control && control.id) lbl.htmlFor = control.id;
+      const d = Object.assign(document.createElement('div'), { className: 'setting-desc', textContent: desc });
+      textWrap.append(lbl, d);
+      div.append(textWrap);
+      if (control) {
+        const ctrlWrap = Object.assign(document.createElement('div'), { className: 'setting-control' });
+        ctrlWrap.appendChild(control);
+        div.append(ctrlWrap);
+      }
+      return div;
+    };
+
+    const mkToggle = (id, checked) => {
       const wrap = Object.assign(document.createElement('div'), { className: 'ytee-toggle-wrap' });
       const cb = Object.assign(document.createElement('input'), { type: 'checkbox', id, checked });
       const track = Object.assign(document.createElement('label'), { className: 'ytee-toggle-track', htmlFor: id });
       track.appendChild(Object.assign(document.createElement('span'), { className: 'ytee-toggle-thumb' }));
       wrap.append(cb, track);
-      const label = Object.assign(document.createElement('label'), { htmlFor: id, textContent: labelText });
-      div.append(label, wrap);
-      return div;
+      return wrap;
     };
 
     let settingsDomBuilt = false;
     const showSettingsModal = () => {
-      const items = settingsItems;
-
       if (!settingsDomBuilt) {
-        while (items.firstChild) items.removeChild(items.firstChild);
+        Object.values(tabContents).forEach(c => { while (c.firstChild) c.removeChild(c.firstChild); });
 
-        // Playback
-        const sectionQ = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Playback' });
-        items.appendChild(sectionQ);
-        const qualityDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const qualityLabel = Object.assign(document.createElement('label'), { htmlFor: 'preferred-quality', textContent: 'Preferred quality' });
+        // General tab
+        const g = tabContents['tab-general'];
+        g.append(mkSection('Playback'));
         const qualitySelect = Object.assign(document.createElement('select'), { id: 'preferred-quality', className: 'ytee-quality-select' });
-        qualityDiv.append(qualityLabel, qualitySelect);
-        items.appendChild(qualityDiv);
-        items.appendChild(Object.assign(document.createElement('div'), { className: 'ytee-quality-note', textContent: 'Applies to all embeds instantly. Falls back to closest available level.' }));
+        g.append(mkRow('Preferred quality', 'Applies instantly to all embeds', qualitySelect));
 
-        // Volume
-        const sectionVol = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Volume' });
-        items.appendChild(sectionVol);
-        items.appendChild(mkToggleRow('ytee-enable-scroll-volume', 'Enable scroll wheel volume', false));
+        g.append(mkSection('Volume Control'));
+        g.append(mkRow('Scroll wheel volume', 'Use scroll to adjust volume on hover', mkToggle('ytee-enable-scroll-volume', false)));
+        const volInitInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-initial-volume', min: '0', max: '100', className: 'hk-input' });
+        g.append(mkRow('Initial volume', 'Default volume for embeds (%)', volInitInput));
+        const volStepInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-volume-step', min: '1', max: '100', className: 'hk-input' });
+        g.append(mkRow('Volume step', 'Amount changed per scroll tick (%)', volStepInput));
 
-        const volInitDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const volInitLabel = Object.assign(document.createElement('label'), { htmlFor: 'ytee-initial-volume', textContent: 'Global initial volume (%)' });
-        const volInitInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-initial-volume', min: '0', max: '100', step: '1', className: 'hk-input' });
-        volInitInput.style.width = '80px';
-        volInitDiv.append(volInitLabel, volInitInput);
-        items.appendChild(volInitDiv);
+        const boostToggle = mkToggle('ytee-enable-volume-boost', false);
+        g.append(mkRow('Volume boost', 'Amplify audio beyond 100%', boostToggle));
 
-        const volStepDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const volStepLabel = Object.assign(document.createElement('label'), { htmlFor: 'ytee-volume-step', textContent: 'Volume step (%)' });
-        const volStepInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-volume-step', min: '1', max: '100', step: '1', className: 'hk-input' });
-        volStepInput.style.width = '80px';
-        volStepDiv.append(volStepLabel, volStepInput);
-        items.appendChild(volStepDiv);
-
-        const boostToggleRow = mkToggleRow('ytee-enable-volume-boost', 'Enable volume boost', false);
-        items.appendChild(boostToggleRow);
-        const boostToggleInput = boostToggleRow.querySelector('input');
-
-        const volBoostDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const volBoostLabel = Object.assign(document.createElement('label'), { htmlFor: 'volume-boost-level', textContent: 'Boost level' });
         const volBoostInput = Object.assign(document.createElement('input'), { type: 'range', id: 'volume-boost-level', min: '1.0', max: '3.0', step: '0.1' });
-        volBoostInput.style.width = '140px';
         const volBoostValue = Object.assign(document.createElement('span'), { className: 'ytee-slider-value', textContent: '1.0x' });
         volBoostInput.addEventListener('input', () => { volBoostValue.textContent = `${Number(volBoostInput.value).toFixed(1)}x`; });
+        const boostSliderWrap = Object.assign(document.createElement('div'), { style: 'display:flex; align-items:center; gap:12px;' });
+        boostSliderWrap.append(volBoostInput, volBoostValue);
+        const boostLevelRow = mkRow('Boost intensity', 'How much to amplify', boostSliderWrap);
+        g.append(boostLevelRow);
 
         const updateBoostState = () => {
-          const enabled = boostToggleInput.checked;
+          const enabled = boostToggle.querySelector('input').checked;
           volBoostInput.disabled = !enabled;
-          volBoostDiv.style.opacity = enabled ? '1' : '0.4';
-          volBoostDiv.style.filter = enabled ? '' : 'grayscale(1)';
-          volBoostDiv.style.pointerEvents = enabled ? 'auto' : 'none';
+          boostLevelRow.style.opacity = enabled ? '1' : '0.4';
+          boostLevelRow.style.filter = enabled ? '' : 'grayscale(1)';
+          boostLevelRow.style.pointerEvents = enabled ? 'auto' : 'none';
         };
-        boostToggleInput.addEventListener('change', updateBoostState);
+        boostToggle.querySelector('input').addEventListener('change', updateBoostState);
 
-        volBoostDiv.append(volBoostLabel, volBoostInput, volBoostValue);
-        items.appendChild(volBoostDiv);
+        // Tools tab
+        const t = tabContents['tab-tools'];
+        t.append(mkSection('Clip Recording'));
+        const clipDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration', min: '1', max: '300', className: 'hk-input' });
+        t.append(mkRow('Standard duration', 'Default clip length in seconds', clipDurInput));
+        const clipCtrlInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration-ctrl', min: '1', max: '300', className: 'hk-input' });
+        t.append(mkRow('Ctrl+click duration', 'Extended clip length in seconds', clipCtrlInput));
 
-        // Recording
-        const sectionClip = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Recording' });
-        items.appendChild(sectionClip);
+        t.append(mkSection('Instant Replay'));
+        const replayDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'replay-duration', min: '1', max: '60', className: 'hk-input' });
+        t.append(mkRow('Replay buffer', 'How many seconds to keep in memory', replayDurInput));
 
-        const clipDurDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const clipDurLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration', textContent: 'Duration (seconds)' });
-        const clipDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration', min: '1', max: '300', step: '1', className: 'hk-input' });
-        clipDurInput.style.width = '80px';
-        clipDurDiv.append(clipDurLabel, clipDurInput);
-        items.appendChild(clipDurDiv);
+        const replayQualitySelect = Object.assign(document.createElement('select'), { id: 'replay-quality', className: 'ytee-quality-select' });
+        const qualities = [
+          { val: 'very low', label: 'Very Low (1 Mbps)' },
+          { val: 'low', label: 'Low (2.5 Mbps)' },
+          { val: 'medium', label: 'Medium (5 Mbps)' },
+          { val: 'high', label: 'High (10 Mbps)' },
+          { val: 'very high', label: 'Very High (20 Mbps)' }
+        ];
+        qualities.forEach(q => {
+          replayQualitySelect.appendChild(Object.assign(document.createElement('option'), { value: q.val, textContent: q.label }));
+        });
+        t.append(mkRow('Replay quality', 'Higher quality increases RAM and CPU usage', replayQualitySelect));
 
-        const clipCtrlDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const clipCtrlLabel = Object.assign(document.createElement('label'), { htmlFor: 'clip-duration-ctrl', textContent: 'Ctrl+Click duration (seconds)' });
-        const clipCtrlInput = Object.assign(document.createElement('input'), { type: 'number', id: 'clip-duration-ctrl', min: '1', max: '300', step: '1', className: 'hk-input' });
-        clipCtrlInput.style.width = '80px';
-        clipCtrlDiv.append(clipCtrlLabel, clipCtrlInput);
-        items.appendChild(clipCtrlDiv);
-
-        // Instant Replay 2
-        const replayDurDiv = Object.assign(document.createElement('div'), { className: 'setting-item' });
-        const replayDurLabel = Object.assign(document.createElement('label'), { htmlFor: 'replay-duration', textContent: 'Instant Replay duration (seconds)' });
-        const replayDurInput = Object.assign(document.createElement('input'), { type: 'number', id: 'replay-duration', min: '1', max: '60', step: '1', className: 'hk-input' });
-        replayDurInput.style.width = '80px';
-        replayDurDiv.append(replayDurLabel, replayDurInput);
-        items.appendChild(replayDurDiv);
-
-        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Instant Replay records at a lower quality than Clip to reduce background performance impact.' }));
-        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Note: Higher resolutions require more system resources.' }));
-
-        // Hotkeys
-        const hotkeyNames = {
-          toggleMute: 'Toggle Mute', toggleStats: 'Toggle Stats',
-          increaseSpeed: 'Increase Speed', decreaseSpeed: 'Decrease Speed',
-          increaseSpeedFine: 'Increase Speed (fine)', decreaseSpeedFine: 'Decrease Speed (fine)',
-          volumeUp: 'Volume Up', volumeDown: 'Volume Down',
+        t.append(mkSection('Media Assets'));
+        const mkDlBtn = () => {
+          const b = Object.assign(document.createElement('button'), { className: 'ytee-btn', style: 'opacity:1; pointer-events:auto; width:95px; height:28px; font-size:11px; border-radius:8px !important;' });
+          const iconSpan = document.createElement('span'); iconSpan.className = 'ytee-icon'; iconSpan.appendChild(ICON_DEFS.download());
+          iconSpan.querySelector('svg').style.width = '14px'; iconSpan.querySelector('svg').style.height = '14px';
+          const labelSpan = Object.assign(document.createElement('span'), { className: 'ytee-label', textContent: 'Download' });
+          b.append(iconSpan, labelSpan);
+          return b;
         };
-        const sectionHK = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Hotkeys' });
-        items.appendChild(sectionHK);
-        Object.keys(hotkeyNames).forEach(key => {
-          const div = Object.assign(document.createElement('div'), { className: 'setting-item' });
-          const input = Object.assign(document.createElement('input'), { type: 'text', id: `hk-${key}`, className: 'hk-input' });
-          input.addEventListener('blur', () => { input.value = sanitizeHotkeyInput(input.value); });
-          const label = Object.assign(document.createElement('label'), { htmlFor: `hk-${key}`, textContent: hotkeyNames[key] });
-          div.append(label, input);
-          items.appendChild(div);
+        const dlThumbBtn = mkDlBtn();
+        t.append(mkRow('Video thumbnail', "Download the current video's thumbnail", dlThumbBtn));
+
+        const dlPfpBtn = mkDlBtn();
+        t.append(mkRow('Channel profile picture', "Download the channel's avatar", dlPfpBtn));
+
+        dlThumbBtn.addEventListener('click', () => {
+          const videoId = getVideoId(getPlayer());
+          if (!videoId) return;
+          let author = getVideoAuthor(getPlayer());
+
+          const proceed = (auth) => {
+            downloadUrlAsFile(`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`, `${auth}_thumbnail`);
+            flashBtnState(dlThumbBtn, 'success');
+          };
+
+          if (author === 'YouTube') {
+            setBtnLabel(dlThumbBtn, '…');
+            GM_xmlhttpRequest({
+              method: 'GET', url: `https://holodex.net/api/v2/videos/${videoId}?include=live_info`,
+              headers: { "Referer": "https://holodex.net/", "Origin": "https://holodex.net" },
+              onload: (r) => {
+                if (r.status === 200) {
+                  try {
+                    const json = JSON.parse(r.responseText);
+                    author = json.channel?.name || author;
+                  } catch (e) { }
+                }
+                proceed(author);
+                setBtnLabel(dlThumbBtn, 'Download');
+              },
+              onerror: () => { proceed(author); setBtnLabel(dlThumbBtn, 'Download'); }
+            });
+          } else {
+            proceed(author);
+          }
         });
 
-        // Appearance
-        const sectionUI = Object.assign(document.createElement('h3'), { className: 'setting-section-title', textContent: 'Appearance' });
-        items.appendChild(sectionUI);
-        items.appendChild(mkToggleRow('ytee-compact-mode', 'Compact icon mode (hides text labels)', false));
-        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Compact mode saves space in multi-stream layouts by hiding text labels.' }));
-        items.appendChild(mkToggleRow('ytee-high-contrast', 'High Contrast Mode', false));
-        items.appendChild(Object.assign(document.createElement('div'), { className: 'setting-note', textContent: 'Uses solid backgrounds for buttons.' }));
+        dlPfpBtn.addEventListener('click', () => {
+          const videoId = getVideoId(getPlayer());
+          if (!videoId) return;
+          setBtnLabel(dlPfpBtn, '…');
 
+          const fallbackToYouTube = (vId) => {
+            GM_xmlhttpRequest({
+              method: 'GET',
+              url: `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vId}&format=json`,
+              onload: (r) => {
+                if (r.status !== 200) { flashBtnState(dlPfpBtn, 'error'); setBtnLabel(dlPfpBtn, 'Download'); return; }
+                try {
+                  const json = JSON.parse(r.responseText);
+                  const authorName = json.author_name || getVideoAuthor(getPlayer());
+                  const channelUrl = json.author_url;
+                  GM_xmlhttpRequest({
+                    method: 'GET', url: channelUrl,
+                    onload: (cr) => {
+                      try {
+                        const match = cr.responseText.match(/"avatar":\{"thumbnails":\[{"url":"([^"]+)"/);
+                        const ogMatch = cr.responseText.match(/<meta property="og:image" content="([^"]+)"/);
+                        const photoUrl = match?.[1] || ogMatch?.[1];
+                        if (photoUrl) {
+                          const cleanUrl = photoUrl.replace(/=s\d+-c-k-c0x[0-9a-f]+-no-rj/, '=s0').replace(/\\u0026/g, '&');
+                          downloadUrlAsFile(cleanUrl, `${authorName}_avatar`);
+                          flashBtnState(dlPfpBtn, 'success');
+                        } else { throw new Error('No avatar found'); }
+                      } catch (e) { flashBtnState(dlPfpBtn, 'error'); }
+                      setBtnLabel(dlPfpBtn, 'Download');
+                    },
+                    onerror: () => { flashBtnState(dlPfpBtn, 'error'); setBtnLabel(dlPfpBtn, 'Download'); }
+                  });
+                } catch (e) { flashBtnState(dlPfpBtn, 'error'); setBtnLabel(dlPfpBtn, 'Download'); }
+              },
+              onerror: () => { flashBtnState(dlPfpBtn, 'error'); setBtnLabel(dlPfpBtn, 'Download'); }
+            });
+          };
+
+          GM_xmlhttpRequest({
+            method: 'GET', url: `https://holodex.net/api/v2/videos/${videoId}?include=live_info`,
+            headers: { "Referer": "https://holodex.net/", "Origin": "https://holodex.net" },
+            onload: (r) => {
+              if (r.status === 200) {
+                try {
+                  const json = JSON.parse(r.responseText);
+                  const photo = json.channel?.photo;
+                  if (photo) {
+                    const author = json.channel.name || getVideoAuthor(getPlayer());
+                    downloadUrlAsFile(photo.replace(/=s\d+-c-k-c0x[0-9a-f]+-no-rj/, '=s0'), `${author}_avatar`);
+                    flashBtnState(dlPfpBtn, 'success');
+                    setBtnLabel(dlPfpBtn, 'Download');
+                    return;
+                  }
+                } catch (e) { }
+              }
+              fallbackToYouTube(videoId);
+            },
+            onerror: () => fallbackToYouTube(videoId)
+          });
+        });
+
+        // Interface tab
+        const ui = tabContents['tab-interface'];
+        ui.append(mkSection('Appearance'));
+        ui.append(mkRow('Compact icon mode', 'Smaller icons', mkToggle('ytee-compact-mode', false)));
+        ui.append(mkRow('High contrast UI', 'Make buttons and text stand out more', mkToggle('ytee-high-contrast', false)));
+
+        ui.append(mkSection('Button Visibility'));
+        const grid = Object.assign(document.createElement('div'), { className: 'ytee-grid-2' });
         const buttonNames = {
-          vol: 'Volume Controls', wl: 'Watch Later', url: 'Copy URL', screenshot: 'Screenshot',
-          clip: 'Clip', replay: 'Instant Replay',
-          pip: 'Picture-in-Picture (Firefox unsupported)',
-          speed: 'Playback Speed', stats: 'Stats for Nerds',
+          vol: 'Volume slider', wl: 'Watch later', url: 'Copy URL', thumb: 'Thumbnail', pfp: 'Profile picture', screenshot: 'Screenshot',
+          clip: 'Clip', replay: 'Replay', pip: 'PiP', speed: 'Speed', stats: 'Stats'
         };
-        Object.keys(buttonNames).forEach(key => items.appendChild(mkToggleRow(`btn-${key}`, buttonNames[key], false)));
+        Object.keys(buttonNames).forEach(key => grid.append(mkRow(buttonNames[key], '', mkToggle(`btn-${key}`, false))));
+        ui.append(grid);
+
+        // Hotkey tab
+        const hk = tabContents['tab-hotkeys'];
+        hk.append(mkSection('Key Bindings'));
+        const hotkeyNames = {
+          toggleMute: ['Toggle Mute', 'Mute/unmute player'],
+          toggleStats: ['Toggle Stats', 'Show/Hide Stats for Nerds'],
+          toggleMiniStats: ['Toggle Mini Stats', 'Show/Hide Mini Stats'],
+          increaseSpeed: ['Speed Up', 'Increase rate by 0.1x'],
+          decreaseSpeed: ['Slow Down', 'Decrease rate by 0.1x'],
+          increaseSpeedFine: ['Speed Up (Fine)', 'Increase rate by 0.01x'],
+          decreaseSpeedFine: ['Slow Down (Fine)', 'Decrease rate by 0.01x'],
+          volumeUp: ['Volume Up', 'Increase volume level'],
+          volumeDown: ['Volume Down', 'Decrease volume level'],
+          toggleSettings: ['Toggle Settings', 'Open/close settings'],
+        };
+        Object.keys(hotkeyNames).forEach(key => {
+          const input = Object.assign(document.createElement('input'), { type: 'text', id: `hk-${key}`, className: 'hk-input' });
+          input.addEventListener('blur', () => { input.value = sanitizeHotkeyInput(input.value); });
+          hk.append(mkRow(hotkeyNames[key][0], hotkeyNames[key][1], input));
+        });
 
         settingsDomBuilt = true;
       }
@@ -1995,7 +2392,6 @@ player-fullscreen-action-menu { display: none !important; }
         qualitySelect.appendChild(Object.assign(document.createElement('option'), { value: 'auto', textContent: QUALITY_LABELS['auto'] }));
         availableLevels.forEach(level => qualitySelect.appendChild(Object.assign(document.createElement('option'), { value: level, textContent: QUALITY_LABELS[level] || level })));
         qualitySelect.value = currentSettings.preferredQuality || 'auto';
-        if (!qualitySelect.value) qualitySelect.value = 'auto';
       }
 
       const setCb = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
@@ -2015,12 +2411,11 @@ player-fullscreen-action-menu { display: none !important; }
       setVal('clip-duration', currentSettings.clipDuration);
       setVal('clip-duration-ctrl', currentSettings.clipDurationCtrl);
       setVal('replay-duration', currentSettings.instantReplayDuration);
+      setVal('replay-quality', currentSettings.instantReplayQuality);
 
       Object.keys(currentSettings.hotkeys).forEach(key => setVal(`hk-${key}`, currentSettings.hotkeys[key]));
-
       setCb('ytee-compact-mode', currentSettings.compactMode);
       setCb('ytee-high-contrast', currentSettings.highContrastUI);
-
       Object.keys(currentSettings.buttons).forEach(key => setCb(`btn-${key}`, currentSettings.buttons[key]));
 
       settingsModal.classList.add('show');
@@ -2028,6 +2423,7 @@ player-fullscreen-action-menu { display: none !important; }
     };
 
     const hideSettingsModal = () => { settingsModal.classList.remove('show'); isSettingsOpen = false; };
+
 
     settingsBtn.addEventListener('click', showSettingsModal);
     cancelBtn.addEventListener('click', hideSettingsModal);
@@ -2058,6 +2454,7 @@ player-fullscreen-action-menu { display: none !important; }
       newSettings.clipDuration = Math.min(300, Math.max(1, Number(document.getElementById('clip-duration').value) || 5));
       newSettings.clipDurationCtrl = Math.min(300, Math.max(1, Number(document.getElementById('clip-duration-ctrl').value) || 300));
       newSettings.instantReplayDuration = Math.min(60, Math.max(1, Number(document.getElementById('replay-duration').value) || 30));
+      newSettings.instantReplayQuality = document.getElementById('replay-quality').value || 'medium';
       newSettings.preferredQuality = document.getElementById('preferred-quality').value || 'auto';
       newSettings.compactMode = document.getElementById('ytee-compact-mode').checked;
       newSettings.highContrastUI = document.getElementById('ytee-high-contrast').checked;
@@ -2077,7 +2474,7 @@ player-fullscreen-action-menu { display: none !important; }
     });
 
     const updateButtonVisibility = () => {
-      const buttonMap = { wl: wlBtn, url: urlBtn, screenshot: screenshotBtn, clip: clipBtn, replay: replayBtn, pip: pipBtn, speed: speedBtn, stats: statsBtn };
+      const buttonMap = { wl: wlBtn, url: urlBtn, thumb: thumbBtn, pfp: pfpBtn, screenshot: screenshotBtn, clip: clipBtn, replay: replayBtn, pip: pipBtn, speed: speedBtn, stats: statsBtn };
       let anyCollapsibleVisible = false;
       Object.keys(buttonMap).forEach(key => {
         const isVisible = key === 'pip'
@@ -2160,10 +2557,6 @@ player-fullscreen-action-menu { display: none !important; }
     buildHotkeyMap();
 
     const onKeyDown = (e) => {
-      if (isSettingsOpen) {
-        if (e.key === "Escape") { hideSettingsModal(); e.preventDefault(); e.stopImmediatePropagation(); }
-        return;
-      }
       const isShiftedSym = e.shiftKey && (e.key in SHIFTED_SYMBOL_MAP);
       const combo = [
         e.altKey ? 'alt+' : '',
@@ -2173,17 +2566,29 @@ player-fullscreen-action-menu { display: none !important; }
       ].join('');
 
       const action = hotkeyMap[combo];
+
+      if (isSettingsOpen) {
+        if (e.key === "Escape" || action === 'toggleSettings') {
+          hideSettingsModal();
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+        return;
+      }
+
       if (action) {
         e.stopImmediatePropagation(); e.preventDefault();
         switch (action) {
           case 'toggleMute': toggleMute(); break;
           case 'toggleStats': toggleStats(); break;
+          case 'toggleMiniStats': toggleMiniStats(); break;
           case 'increaseSpeed': applySpeed(targetSpeed + SPEED_STEP); break;
           case 'decreaseSpeed': applySpeed(targetSpeed - SPEED_STEP); break;
           case 'increaseSpeedFine': applySpeed(targetSpeed + SPEED_STEP_FINE); break;
           case 'decreaseSpeedFine': applySpeed(targetSpeed - SPEED_STEP_FINE); break;
           case 'volumeUp': applyVolume(targetVolume + (currentSettings.volumeStep / 100)); break;
           case 'volumeDown': applyVolume(targetVolume - (currentSettings.volumeStep / 100)); break;
+          case 'toggleSettings': showSettingsModal(); break;
         }
         showControls();
       }
@@ -2193,7 +2598,7 @@ player-fullscreen-action-menu { display: none !important; }
 
     const btnGroup = document.createElement("div");
     btnGroup.id = "custom-btn-group";
-    btnGroup.append(toggleBtn, wlBtn, urlBtn, screenshotBtn, clipBtn, replayBtn, pipBtn, speedBtn, statsBtn, settingsBtn);
+    btnGroup.append(toggleBtn, wlBtn, urlBtn, thumbBtn, pfpBtn, screenshotBtn, clipBtn, replayBtn, pipBtn, speedBtn, statsBtn, settingsBtn);
     updateButtonVisibility();
 
     let isHoveringBtnGroup = false;
@@ -2234,11 +2639,22 @@ player-fullscreen-action-menu { display: none !important; }
     // memory 2
     const initialVid = getVideoId(getPlayer());
     if (initialVid) {
-      if (currentSettings.volumeCache[initialVid] !== undefined) {
-        applyVolume(currentSettings.volumeCache[initialVid]);
+      const cachedVol = currentSettings.volumeCache[initialVid];
+
+      if (cachedVol !== undefined) {
+        applyVolume(cachedVol);
+
+        const reapplyCount = { n: 0 };
+        const reapply = () => {
+          if (reapplyCount.n++ < 5 && Math.abs(video.volume - cachedVol) > 0.01) {
+            applyVolume(cachedVol);
+          }
+        };
+        [100, 300, 600, 1200, 2000].forEach(ms => setTimeout(reapply, ms));
       } else {
         applyVolume(currentSettings.initialVolume / 100);
       }
+
       if (currentSettings.miniStatsCache[initialVid]) {
         toggleMiniStats();
       }
@@ -2257,20 +2673,19 @@ player-fullscreen-action-menu { display: none !important; }
         return;
       }
 
-      const p = getPlayer();
-
-
-      if (p && typeof p.requestFullscreen === 'function') {
-        try { p.requestFullscreen(); return; } catch (e) { }
-      }
-
-      if (video.requestFullscreen) {
-        video.requestFullscreen().catch(() => {
-          document.documentElement.requestFullscreen().catch(() => { });
-        });
+      if (!document.fullscreenEnabled) {
+        window.parent.postMessage({ type: 'YTEE_REQUEST_FULLSCREEN' }, '*');
         return;
       }
 
+      const p = getPlayer();
+      if (p && typeof p.requestFullscreen === 'function') {
+        try { p.requestFullscreen(); return; } catch (e) { }
+      }
+      if (video.requestFullscreen) {
+        video.requestFullscreen().catch(() => { });
+        return;
+      }
       if (video.webkitEnterFullscreen) {
         try { video.webkitEnterFullscreen(); } catch (e) { }
       }

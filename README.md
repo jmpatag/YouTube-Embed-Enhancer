@@ -72,7 +72,8 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 - **Volume Boost** — Amplify audio up to 3× in Settings → General.
 - **Playback Speed** — Click to cycle; Shift+Click for fine steps (0.01×); right-click to reset to 1×.
 - **Preferred Quality** — Set a default resolution that applies to all embeds.
-- **Persistent Volume** — Volume is remembered per video across sessions.
+- **Initial Volume** — Set a default starting volume for all embeds in Settings → General.
+- **Persistent Volume** — Volume is remembered per video across sessions. If you hit refresh, you won't need to adjust the volume again — especially useful in Holodex multiview.
 
 ### Recording & Capture
 
@@ -106,7 +107,7 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 
 **1. Install a userscript manager**
 
-- [Tampermonkey](https://www.tampermonkey.net/) — Chrome, Edge, Safari
+- [Tampermonkey](https://www.tampermonkey.net/) — Chrome, Edge, Safari *(recommended)*
 - [Violentmonkey](https://violentmonkey.github.io/) — Chrome, Firefox, Edge
 - [Greasemonkey](https://www.greasespot.net/) — Firefox
 

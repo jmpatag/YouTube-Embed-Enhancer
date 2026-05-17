@@ -107,7 +107,6 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 
 **1. Install a userscript manager**
 
-- [Tampermonkey](https://www.tampermonkey.net/) — Chrome, Edge, Safari *(recommended)*
 - [Violentmonkey](https://violentmonkey.github.io/) — Chrome, Firefox, Edge
 - [Greasemonkey](https://www.greasespot.net/) — Firefox
 

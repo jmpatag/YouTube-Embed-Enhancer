@@ -9,7 +9,7 @@
 // @match        *://www.youtube-nocookie.com/embed/*
 // @match        *://www.nexusmods.com/*
 // @run-at       document-idle
-// @require      https://cdn.jsdelivr.net/gh/jmpatag/YouTube-Embed-Enhancer@4b37492ff33452b3fa3f4a27cd104c99d4761587/mediabunny.min.cjs
+// @require      https://cdn.jsdelivr.net/gh/jmpatag/YouTube-Embed-Enhancer@4b37492ff33452b3fa3f4a27cd104c99d4761587/mediabunny.min.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener

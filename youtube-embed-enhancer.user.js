@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.6.1
+// @version      2.6.2
 // @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
 // @author       jmpatag
 // @license      GPL-3.0
@@ -546,6 +546,15 @@ player-fullscreen-action-menu { display: none !important; }
   background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1);
   border-radius: 8px; color: #fff; font-size: 12.5px; font-weight: 600;
   font-family: ui-monospace, monospace; transition: all 0.2s; text-align: right;
+}
+#custom-settings-content .hk-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+#custom-settings-content .hk-input[type="number"]::-webkit-outer-spin-button,
+#custom-settings-content .hk-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 #custom-settings-content .hk-input:focus, #custom-settings-content .ytee-quality-select:focus {
   outline:none; border-color:var(--ytee-accent); background: #222;

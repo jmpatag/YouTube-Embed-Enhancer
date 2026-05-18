@@ -20,6 +20,14 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 ## What's New
 
 <details>
+<summary><strong>v2.7.0</strong></summary>
+
+- **No More External Dependency**: The Mediabunny library is now bundled inside the script — no extra downloads, better security, and works even if the source goes down.
+- **Snap Is Now Instant**: The screenshot (Snap) button now copies or saves your frame immediately when you click it, instead of waiting in the background.
+
+</details>
+
+<details>
 <summary><strong>v2.6.0</strong></summary>
 
 - **UI & Settings Revamp**: Fresh new design and an easy-to-navigate tabbed layout.

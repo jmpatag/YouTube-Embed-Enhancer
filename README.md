@@ -20,6 +20,14 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 ## What's New
 
 <details>
+<summary><strong>v2.8.0</strong></summary>
+
+- **Toggleable Volume Cache**: You can now enable or disable the volume cache in Settings → General. Disabling it clears saved volumes instantly.
+- **Bug Fixes**: Fixed an issue with volume control and resolved a bug where double-clicking caused UI issues in fullscreen mode.
+
+</details>
+
+<details>
 <summary><strong>v2.7.0</strong></summary>
 
 - **No More External Dependency**: The Mediabunny library is now bundled inside the script — no extra downloads, better security, and works even if the source goes down.

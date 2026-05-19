@@ -1,13 +1,14 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.7.0
+// @version      2.8.0
 // @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
 // @author       jmpatag
 // @license      GPL-3.0
 // @match        *://www.youtube.com/embed/*
 // @match        *://www.youtube-nocookie.com/embed/*
 // @match        *://www.nexusmods.com/*
+// @match        *://*/*
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -923,6 +924,7 @@ player-fullscreen-action-menu { display: none !important; }
     volumeBoostLevel: 1,
     enableVolumeBoost: true,
     enableScrollVolume: true,
+    enableVolumeCache: true,
     volumeStep: 5,
     initialVolume: 100,
     clipDuration: 5,
@@ -966,6 +968,7 @@ player-fullscreen-action-menu { display: none !important; }
         : s.volumeBoost === true ? 1.5 : defaultSettings.volumeBoostLevel,
       enableVolumeBoost: typeof s.enableVolumeBoost === 'boolean' ? s.enableVolumeBoost : defaultSettings.enableVolumeBoost,
       enableScrollVolume: typeof s.enableScrollVolume === 'boolean' ? s.enableScrollVolume : defaultSettings.enableScrollVolume,
+      enableVolumeCache: typeof s.enableVolumeCache === 'boolean' ? s.enableVolumeCache : defaultSettings.enableVolumeCache,
       initialVolume: typeof s.initialVolume === 'number' ? Math.min(100, Math.max(0, s.initialVolume)) : defaultSettings.initialVolume,
       volumeStep: typeof s.volumeStep === 'number' ? Math.min(100, Math.max(1, s.volumeStep)) : defaultSettings.volumeStep,
       clipDuration: typeof s.clipDuration === 'number' ? Math.min(300, Math.max(1, s.clipDuration)) : defaultSettings.clipDuration,
@@ -977,7 +980,7 @@ player-fullscreen-action-menu { display: none !important; }
       isCollapsed: typeof s.isCollapsed === 'boolean' ? s.isCollapsed : defaultSettings.isCollapsed,
       highContrastUI: typeof s.highContrastUI === 'boolean' ? s.highContrastUI : defaultSettings.highContrastUI,
       playbackSpeed: typeof s.playbackSpeed === 'number' ? Math.min(16, Math.max(0.1, s.playbackSpeed)) : defaultSettings.playbackSpeed,
-      volumeCache: typeof s.volumeCache === 'object' ? s.volumeCache : defaultSettings.volumeCache,
+      volumeCache: (typeof s.volumeCache === 'object' && (typeof s.enableVolumeCache === 'boolean' ? s.enableVolumeCache : defaultSettings.enableVolumeCache)) ? s.volumeCache : {},
       miniStatsCache: typeof s.miniStatsCache === 'object' ? s.miniStatsCache : defaultSettings.miniStatsCache,
       miniStatsPos: s.miniStatsPos || defaultSettings.miniStatsPos,
     };
@@ -1090,6 +1093,8 @@ player-fullscreen-action-menu { display: none !important; }
 
     let targetVolume = video.volume;
     let targetMuted = video.muted;
+    let volumeLockUntil = 0;
+    const VOLUME_LOCK_MS = 300;
 
     const uw = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
@@ -1198,6 +1203,7 @@ player-fullscreen-action-menu { display: none !important; }
         });
       }
       scriptChangeDepth++;
+      volumeLockUntil = Date.now() + VOLUME_LOCK_MS;
       try {
         targetVolume = Math.min(1, Math.max(0, volume));
         targetMuted = muted;
@@ -1232,7 +1238,7 @@ player-fullscreen-action-menu { display: none !important; }
       showVolumePercent(clamped === 0 ? 0 : clamped);
 
       const vid = getVideoId(getPlayer());
-      if (vid) {
+      if (vid && currentSettings.enableVolumeCache) {
         currentSettings.volumeCache[vid] = clamped;
         saveStoredSettings(currentSettings);
       }
@@ -1277,6 +1283,7 @@ player-fullscreen-action-menu { display: none !important; }
     video.addEventListener("volumechange", () => {
       if (scriptChangeDepth > 0) return;
       if (!playerReady) return;
+      if (Date.now() < volumeLockUntil) return;
 
       const newMuted = video.muted;
       const newVol = video.volume;
@@ -1293,7 +1300,7 @@ player-fullscreen-action-menu { display: none !important; }
       showVolumePercent(displayVol);
 
       const vid = getVideoId(getPlayer());
-      if (vid) {
+      if (vid && currentSettings.enableVolumeCache) {
         currentSettings.volumeCache[vid] = targetVolume;
         saveStoredSettings(currentSettings);
       }
@@ -2389,6 +2396,7 @@ player-fullscreen-action-menu { display: none !important; }
 
         g.append(mkSection('Volume Control'));
         g.append(mkRow('Scroll wheel volume', 'Use scroll to adjust volume on hover', mkToggle('ytee-enable-scroll-volume', false)));
+        g.append(mkRow('Volume cache', 'Remember the volume level for the last 30 videos', mkToggle('ytee-enable-volume-cache', false)));
         const volInitInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-initial-volume', min: '0', max: '100', className: 'hk-input' });
         g.append(mkRow('Initial volume', 'Default volume for embeds (%)', volInitInput));
         const volStepInput = Object.assign(document.createElement('input'), { type: 'number', id: 'ytee-volume-step', min: '1', max: '100', className: 'hk-input' });
@@ -2603,6 +2611,7 @@ player-fullscreen-action-menu { display: none !important; }
       const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 
       setCb('ytee-enable-scroll-volume', currentSettings.enableScrollVolume);
+      setCb('ytee-enable-volume-cache', currentSettings.enableVolumeCache);
       setVal('ytee-volume-step', currentSettings.volumeStep);
       setVal('ytee-initial-volume', currentSettings.initialVolume);
       setCb('ytee-enable-volume-boost', currentSettings.enableVolumeBoost);
@@ -2654,6 +2663,7 @@ player-fullscreen-action-menu { display: none !important; }
       newSettings.volumeBoostLevel = Number(document.getElementById('volume-boost-level').value) || 1;
       newSettings.enableVolumeBoost = document.getElementById('ytee-enable-volume-boost').checked;
       newSettings.enableScrollVolume = document.getElementById('ytee-enable-scroll-volume').checked;
+      newSettings.enableVolumeCache = document.getElementById('ytee-enable-volume-cache').checked;
       newSettings.volumeStep = Math.min(100, Math.max(1, Number(document.getElementById('ytee-volume-step').value) || 5));
       newSettings.initialVolume = Math.min(100, Math.max(0, Number(document.getElementById('ytee-initial-volume').value) || 100));
       newSettings.clipDuration = Math.min(300, Math.max(1, Number(document.getElementById('clip-duration').value) || 5));
@@ -2663,7 +2673,7 @@ player-fullscreen-action-menu { display: none !important; }
       newSettings.preferredQuality = document.getElementById('preferred-quality').value || 'auto';
       newSettings.compactMode = document.getElementById('ytee-compact-mode').checked;
       newSettings.highContrastUI = document.getElementById('ytee-high-contrast').checked;
-      newSettings.volumeCache = currentSettings.volumeCache || {};
+      newSettings.volumeCache = newSettings.enableVolumeCache ? (currentSettings.volumeCache || {}) : {};
       newSettings.isCollapsed = currentSettings.isCollapsed;
       currentSettings = newSettings;
       saveStoredSettings(currentSettings);
@@ -2840,11 +2850,22 @@ player-fullscreen-action-menu { display: none !important; }
     };
     window.addEventListener("mousemove", onMouseMove, { passive: true });
 
+    const onFullscreenChange = () => {
+      if (document.fullscreenElement) {
+        showControls();
+        const p = getPlayer();
+        if (p && typeof p.playVideo === 'function') {
+          video.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+        }
+      }
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+
 
     // memory 2
     const initialVid = getVideoId(getPlayer());
     if (initialVid) {
-      const cachedVol = currentSettings.volumeCache[initialVid];
+      const cachedVol = currentSettings.enableVolumeCache ? currentSettings.volumeCache[initialVid] : undefined;
 
       if (cachedVol !== undefined) {
         applyVolume(cachedVol);
@@ -2883,17 +2904,9 @@ player-fullscreen-action-menu { display: none !important; }
         return;
       }
 
-      const p = getPlayer();
-      if (p && typeof p.requestFullscreen === 'function') {
-        try { p.requestFullscreen(); return; } catch (e) { }
-      }
-      if (video.requestFullscreen) {
-        video.requestFullscreen().catch(() => { });
-        return;
-      }
-      if (video.webkitEnterFullscreen) {
-        try { video.webkitEnterFullscreen(); } catch (e) { }
-      }
+      document.documentElement.requestFullscreen().catch(() => {
+        if (video.requestFullscreen) video.requestFullscreen().catch(() => { });
+      });
     };
     window.addEventListener("dblclick", onDblClick, { passive: true });
 
@@ -2933,6 +2946,7 @@ player-fullscreen-action-menu { display: none !important; }
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("dblclick", onDblClick);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
 
       if (wheelRafId) cancelAnimationFrame(wheelRafId);
       clipRafId = null; wheelRafId = 0;

@@ -8,7 +8,6 @@
 // @match        *://www.youtube.com/embed/*
 // @match        *://www.youtube-nocookie.com/embed/*
 // @match        *://www.nexusmods.com/*
-// @match        *://*/*
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue

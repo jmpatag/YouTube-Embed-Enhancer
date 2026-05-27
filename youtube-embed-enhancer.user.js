@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      2.8.0
+// @version      2.8.1
 // @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
 // @author       jmpatag
 // @license      GPL-3.0
@@ -2863,23 +2863,20 @@ player-fullscreen-action-menu { display: none !important; }
 
     // memory 2
     const initialVid = getVideoId(getPlayer());
-    if (initialVid) {
-      const cachedVol = currentSettings.enableVolumeCache ? currentSettings.volumeCache[initialVid] : undefined;
+    const cachedVol = initialVid && currentSettings.enableVolumeCache ? currentSettings.volumeCache[initialVid] : undefined;
+    const startVolume = (cachedVol !== undefined) ? cachedVol : (currentSettings.initialVolume / 100);
 
-      if (cachedVol !== undefined) {
-        applyVolume(cachedVol);
+    applyVolume(startVolume);
 
-        const reapplyCount = { n: 0 };
-        const reapply = () => {
-          if (reapplyCount.n++ < 5 && Math.abs(video.volume - cachedVol) > 0.01) {
-            applyVolume(cachedVol);
-          }
-        };
-        [100, 300, 600, 1200, 2000].forEach(ms => setTimeout(reapply, ms));
-      } else {
-        applyVolume(currentSettings.initialVolume / 100);
+    const reapplyCount = { n: 0 };
+    const reapply = () => {
+      if (reapplyCount.n++ < 5 && Math.abs(video.volume - startVolume) > 0.01) {
+        applyVolume(startVolume);
       }
+    };
+    [100, 300, 600, 1200, 2000].forEach(ms => setTimeout(reapply, ms));
 
+    if (initialVid) {
       if (currentSettings.miniStatsCache[initialVid]) {
         toggleMiniStats();
       }
@@ -2911,6 +2908,7 @@ player-fullscreen-action-menu { display: none !important; }
 
     const initUI = () => {
       document.body.prepend(volPct, speedOverlay, clipOverlay, replayOverlay, miniStats, vol, muteBtn, btnGroup);
+      applyUIStates(currentSettings);
     };
     initUI();
 

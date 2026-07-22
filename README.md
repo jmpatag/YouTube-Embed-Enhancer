@@ -20,6 +20,35 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 ## What's New
 
 <details>
+<summary><strong>v3.0.0</strong></summary>
+
+### ✨ New Features
+
+- **History Tab** — Ever started a livestream but had to sleep, go to work, or do something else before finishing it? Instead of using Watch Later or writing down a timestamp, find it here. Browse your watched videos with thumbnails, titles, channel names, and quick actions like Copy Link, Download Thumbnail/PFP, Open in Holodex, Delete and list/grid view.
+- **Video Cache (Playback Position Cache)** — Watching a 6–12 hour stream or archive and YouTube forgets your progress—or you forgot to copy the timestamp before closing the page? This feature remembers where you left off, so you can continue watching later (up to the last 200 videos).
+- **GitHub Gist Sync** — Using multiple devices? Sync your watch history across all of them using a private GitHub Gist with configurable sync intervals.
+- **JSON Import/Export** — You can manually import and export your history.
+- **Persistent Mini Stats** — Keep Mini Stats enabled by default across every video.
+- **Settings Fullscreen** — Added a button to expand the Settings window, useful for small embeds.
+
+### ⚙️ Changes and Improvements
+
+- Improved UI with a cleaner, more polished Settings window.
+- Major Performance improvements.
+- Initial Volume can now be set to 0%.
+- Video thumbnail and channel profile picture downloads have been moved from the Tools tab to the History tab. You can still add them back as toolbar buttons from the Interface tab, though they may be removed in a future update.
+- Restore Defaults and Clear Cache now use a two-click confirmation to help prevent accidental clicks.
+- Added possible compatibility with the HyperChat browser extension.
+- Updated mediabunny to 1.50.9
+
+### 🐛 Bug Fixes
+
+- Fixed double-clicking Mini Stats not resetting its position to the bottom-left corner.
+- Fixed various stability issues and minor bugs.
+
+</details>
+
+<details>
 <summary><strong>v2.8.0</strong></summary>
 
 - **Toggleable Volume Cache**: You can now enable or disable the volume cache in Settings → General. Disabling it clears saved volumes instantly.

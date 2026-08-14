@@ -20,6 +20,25 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 ## What's New
 
 <details>
+<summary><strong>v3.1.0</strong></summary>
+
+### ✨ New Features
+
+- **Favorites** — Star any video in the History tab to pin it. Filter the whole list down to just favorites with one click. Favorites sync with Gist and JSON import/export like the rest of your history.
+
+### ⚙️ Changes and Improvements
+
+- Performance improvements
+- Faster page load: the Mediabunny library and the Settings window are now only built the first time you actually need them (opening Settings, using Clip/Replay), instead of unconditionally on every embed.
+- Removed the Thumbnail and Profile Picture toolbar buttons. Both are still available in history tab.
+
+### 🐛 Bug Fixes
+
+- A possible fullscreen fixes
+
+</details>
+
+<details>
 <summary><strong>v3.0.0</strong></summary>
 
 ### ✨ New Features

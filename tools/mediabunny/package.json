@@ -1,0 +1,17 @@
+{
+  "name": "ytee-mediabunny-build",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Builds the trimmed Mediabunny bundle inlined into the userscript",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "upgrade": "npm install mediabunny@latest && npm run build"
+  },
+  "dependencies": {
+    "mediabunny": "~1.55.6"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

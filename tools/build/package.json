@@ -1,0 +1,12 @@
+{
+  "name": "ytee-build",
+  "private": true,
+  "type": "module",
+  "description": "Stitches src/*.js into the single youtube-embed-enhancer.user.js.",
+  "scripts": {
+    "build": "node bundle.mjs"
+  },
+  "devDependencies": {
+    "rollup": "^4.63.1"
+  }
+}

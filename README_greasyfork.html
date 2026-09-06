@@ -7,6 +7,32 @@
 
 <h2>What's New</h2>
 
+<details open>
+    <summary><strong>v3.2.0</strong></summary>
+
+    <h3>✨ New Features</h3>
+    <ul>
+        <li><strong>Notes</strong> — The new <code>🔖</code> button lets you bookmark a moment in a video and give it a
+            name. Click a saved note any time to jump right back to that spot, or rename and delete notes whenever you
+            like. (Right-click the button to save a note without opening the panel, or set a hotkey for it.)</li>
+        <li>Your notes are saved and synced along with the rest of your history.</li>
+        <li><strong>Sleep Timer</strong> — pauses the video after a set time — pick a preset (15 minutes to 4 hours),
+            type your own number of minutes, or have it stop at the end of the video. A small countdown chip shows the
+            time left, and the timer keeps going even if the video reloads.</li>
+    </ul>
+
+    <h3>⚙️ Changes and Improvements</h3>
+    <ul>
+        <li><strong>Smaller script</strong> — the bundled Mediabunny library is trimmed to just the parts Clip/Replay
+            uses, ~300 KB off the file. Still fully self-contained. Updated to Mediabunny 1.55.6.</li>
+        <li><strong>Faster and lighter</strong> — the History tab now opens instantly even with hundreds of saved
+            videos, and starring or deleting a video only updates that one row.</li>
+        <li><strong>Auto-shrinking toolbar</strong> — on very small embeds the toolbar automatically hides button labels
+            (and tucks itself away if space is still tight).</li>
+    </ul>
+
+</details>
+
 <details>
     <summary><strong>v3.1.0</strong></summary>
 
@@ -163,6 +189,12 @@
     <li><strong>Initial Volume</strong> — Set a default starting volume for all embeds in Settings → General.</li>
     <li><strong>Persistent Volume</strong> — Volume is remembered per video across sessions. If you hit refresh, you
         won't need to adjust the volume again — especially useful in Holodex multiview.</li>
+    <li><strong>Sleep Timer</strong> — Auto-pause after a set time (15 min – 4 hours, a custom minute count, or the
+        video's end) via the <code>😴</code> toolbar button or Settings → Tools. Survives player reloads, shows a
+        <code>😴</code> countdown chip, optionally fades the audio out, and offers snooze buttons when it fires.</li>
+    <li><strong>Notes</strong> — Click <code>🔖</code> (or the <em>Add Note</em> hotkey) to drop named timestamps on a
+        video and jump back to them. They live in the History tab's Notes view, sync with Gist, and export as a chapter
+        list.</li>
 </ul>
 
 <h3>Recording &amp; Capture</h3>
@@ -225,7 +257,8 @@
 
 <h2>Credits &amp; License</h2>
 <ul>
-    <li>Media processing powered by <a href="https://github.com/Vanilagy/mediabunny">Mediabunny</a> (MIT License)</li>
+    <li>Media processing powered by <a href="https://github.com/Vanilagy/mediabunny">Mediabunny</a> (MPL-2.0), bundled
+        tree-shaken</li>
     <li>Licensed under the <a href="https://github.com/jmpatag/YouTube-Embed-Enhancer/blob/main/LICENSE">GNU General
             Public License v3.0</a></li>
 </ul>

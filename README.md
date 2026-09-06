@@ -19,6 +19,23 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 
 ## What's New
 
+<details open>
+<summary><strong>v3.2.0</strong></summary>
+
+### ✨ New Features
+
+- **Notes** — The new `🔖` button lets you bookmark a moment in a video and give it a name. Click a saved note any time to jump right back to that spot, or rename and delete notes whenever you like. (Right-click the button to save a note without opening the panel, or set a hotkey for it.)
+- Your notes are saved and synced along with the rest of your history.
+- **Sleep Timer** — pauses the video after a set time — pick a preset (15 minutes to 4 hours), type your own number of minutes, or have it stop at the end of the video. A small countdown chip shows the time left, the timer keeps going even if the video reloads.
+
+### ⚙️ Changes and Improvements
+
+- **Smaller script** — the bundled Mediabunny library is trimmed to just the parts Clip/Replay uses, ~300 KB off the file. Still fully self-contained. Updated to Mediabunny 1.55.6; build tooling in [`tools/mediabunny/`](tools/mediabunny/).
+- **Faster and lighter** — The History tab now opens instantly even with hundreds of saved videos, and starring or deleting a video only updates that one row.
+- **Auto-shrinking toolbar** — On very small embeds the toolbar automatically hides button labels (and tucks itself away if space is still tight).
+
+</details>
+
 <details>
 <summary><strong>v3.1.0</strong></summary>
 
@@ -138,6 +155,8 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 - **Preferred Quality** — Set a default resolution that applies to all embeds.
 - **Initial Volume** — Set a default starting volume for all embeds in Settings → General.
 - **Persistent Volume** — Volume is remembered per video across sessions. If you hit refresh, you won't need to adjust the volume again — especially useful in Holodex multiview.
+- **Sleep Timer** — Auto-pause after a set time (15 min – 4 hours, a custom minute count, or the video's end) via the `😴` toolbar button or Settings → Tools. Survives player reloads, shows a `😴` countdown chip, optionally fades the audio out, and offers snooze buttons when it fires.
+- **Notes** — Click `🔖` (or the *Add Note* hotkey) to drop named timestamps on a video and jump back to them. They live in the History tab's Notes view, sync with Gist, and export as a chapter list.
 
 ### Recording & Capture
 
@@ -184,7 +203,38 @@ Or find it on [Greasy Fork](https://greasyfork.org/scripts/572481) or [GitHub](h
 
 ---
 
+## Building from source
+
+The script is stitched from the modules in [`src/`](src/). `youtube-embed-enhancer.user.js`
+in the repo root is the built output.
+
+**Requirements:** Node (LTS). All commands run from the repo root.
+
+```
+npm run build            # -> youtube-embed-enhancer.user.js
+npm run check            # node --check on the built file
+```
+
+Rollup bundles `src/` into one file (the script itself is never minified) with the
+`// ==UserScript==` banner from `src/_banner.txt` on top — `@version` lives there.
+
+**Mediabunny** (the MP4 remux library for Clip / Instant Replay) is vendored as a
+trimmed, minified `src/mediabunny.js`. To regenerate or update it:
+
+```
+npm run build:mediabunny     # rebuild at the pinned version, then re-stitch
+npm run upgrade:mediabunny    # pull mediabunny@latest, rebuild, re-stitch
+```
+
+Both finish by re-running `npm run build`, so the userscript is always current.
+
+**CI:** `.github/workflows/build-check.yml` rebuilds on every PR and fails if the
+committed `youtube-embed-enhancer.user.js` is stale.
+`mediabunny-upgrade.yml` runs monthly and opens a PR when a newer Mediabunny ships.
+
+---
+
 ## Credits & License
 
-- Media processing powered by [Mediabunny](https://github.com/Vanilagy/mediabunny) (MIT License)
+- Media processing powered by [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0), bundled tree-shaken — see [`tools/mediabunny/`](tools/mediabunny/)
 - Licensed under the **[GNU General Public License v3.0](LICENSE)**

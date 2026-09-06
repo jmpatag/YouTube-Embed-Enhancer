@@ -1,0 +1,23 @@
+// ==UserScript==
+// @name         YouTube Embed Enhancer
+// @namespace    https://github.com/jmpatag
+// @version      3.2.0
+// @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
+// @author       jmpatag
+// @license      GPL-3.0
+// @match        *://www.youtube.com/embed/*
+// @match        *://www.youtube-nocookie.com/embed/*
+// @match        *://www.nexusmods.com/*
+// @run-at       document-idle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_addValueChangeListener
+// @grant        GM_xmlhttpRequest
+// @connect      holodex.net
+// @connect      www.youtube.com
+// @connect      api.github.com
+// @connect      img.youtube.com
+// @grant        unsafeWindow
+// @downloadURL https://update.greasyfork.org/scripts/572481/YouTube%20Embed%20Enhancer.user.js
+// @updateURL https://update.greasyfork.org/scripts/572481/YouTube%20Embed%20Enhancer.meta.js
+// ==/UserScript==

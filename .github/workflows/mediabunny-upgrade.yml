@@ -1,0 +1,44 @@
+name: Mediabunny upgrade
+
+# Monthly check for a newer Mediabunny -> rebuild the inlined bundle -> open a PR.
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Upgrade Mediabunny and rebuild
+        run: npm run upgrade:mediabunny
+
+      - name: PR
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git diff --quiet && { echo "nothing new"; exit 0; }
+
+          version=$(node -p "require('./tools/mediabunny/node_modules/mediabunny/package.json').version")
+          branch="mediabunny/$version"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "chore: bump Mediabunny to $version"
+          git push -fu origin "$branch"
+
+          gh pr create --base main --head "$branch" \
+            --title "Bump Mediabunny to $version" \
+            --body "Automated. Test a Clip + Instant Replay before merging." \
+            || echo "PR already open"

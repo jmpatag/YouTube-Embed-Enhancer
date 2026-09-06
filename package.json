@@ -1,0 +1,11 @@
+{
+  "name": "youtube-embed-enhancer",
+  "private": true,
+  "description": "Build scripts for the userscript. Source is in src/; the built file is youtube-embed-enhancer.user.js.",
+  "scripts": {
+    "build": "npm --prefix tools/build install --no-audit --no-fund --loglevel=error && node tools/build/bundle.mjs",
+    "build:mediabunny": "npm --prefix tools/mediabunny install --no-audit --no-fund --loglevel=error && node tools/mediabunny/build.mjs && npm run build",
+    "upgrade:mediabunny": "npm --prefix tools/mediabunny install mediabunny@latest --no-audit --no-fund --loglevel=error && node tools/mediabunny/build.mjs && npm run build",
+    "check": "node --check youtube-embed-enhancer.user.js"
+  }
+}

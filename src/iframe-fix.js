@@ -40,12 +40,5 @@ export const runTopFrameFixes = () => {
     }
   });
 
-  document.addEventListener('dblclick', (e) => {
-    const iframe = e.target.closest('iframe[src*="youtube.com/embed"]')
-      ?? document.querySelector('iframe[src*="youtube.com/embed"]');
-    if (!iframe) return;
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
-    else iframe.requestFullscreen().catch(() => { });
-  }, { passive: true });
   return;
 };

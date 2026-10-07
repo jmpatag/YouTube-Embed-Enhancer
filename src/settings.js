@@ -1,4 +1,4 @@
-import { yteeWarn } from './debug.js';
+import { yteeWarn, yteeLog } from './debug.js';
 
 // Settings
 export const defaultSettings = {
@@ -8,27 +8,71 @@ export const defaultSettings = {
     increaseSpeed: '.', decreaseSpeed: ',', increaseSpeedFine: 'shift+.', decreaseSpeedFine: 'shift+,',
     volumeUp: 'arrowup', volumeDown: 'arrowdown', toggleSettings: 'q', toggleFullscreen: 'f',
     cycleSleepTimer: '', addBookmark: '',
+    screenshot: '', clip: '', replay: '', pip: '', copyUrl: '', watchLater: '', toggleCollapse: '',
   },
   volumeBoostLevel: 1, enableVolumeBoost: false, enableScrollVolume: true, enableVolumeCache: false,
   volumeStep: 5, initialVolume: 100, clipDuration: 5, clipDurationCtrl: 300,
   instantReplayDuration: 30, instantReplayQuality: 'medium', preferredQuality: 'auto',
   sleepTimer: 'off', sleepTimerReset: 'playback', sleepTimerFadeOut: false, sleepTimerCustom: 120,
-  compactMode: false, isCollapsed: false, highContrastUI: false, playbackSpeed: 1,
+  compactMode: false, isCollapsed: false, highContrastUI: false, enableBlur: true,
   volumeCache: {}, miniStatsCache: {}, miniStatsPos: null, alwaysShowMiniStats: false,
   enablePositionCache: false, enableGistSync: false, historyViewMode: 'list',
   gistToken: '', gistId: '', gistSyncLastTime: 0, gistSyncInterval: 180, positionCache: {},
   favoritesCache: {}, annotationsCache: {},
 };
 
-export const loadStoredSettings = () => {
+let __ytee_gmStorageBroken = false;
+let __ytee_gmVerified = false;
+export const isGmStorageBroken = () => __ytee_gmStorageBroken;
+
+// Obfuscates the token to keep raw ghp_... strings out of DevTools, dumps, and settings exports.
+// Note: Plain obfuscation, not encryptionn
+const __YTEE_TK_KEY = 'ytee§gist§fallback§v1';
+const __ytee_scrambleToken = (str) => {
   try {
-    if (typeof GM_getValue === 'function') {
-      const v = GM_getValue('ytee-settings', null);
-      if (v) return typeof v === 'string' ? JSON.parse(v) : v;
-    }
-  } catch (e) { yteeWarn('GM_getValue failed', e); }
-  try { const r = localStorage.getItem('ytee-settings'); if (r) return JSON.parse(r); } catch (e) { }
-  return null;
+    if (!str) return '';
+    let out = '';
+    for (let i = 0; i < str.length; i++) out += String.fromCharCode(str.charCodeAt(i) ^ __YTEE_TK_KEY.charCodeAt(i % __YTEE_TK_KEY.length));
+    return btoa(out);
+  } catch (e) { return ''; }
+};
+const __ytee_unscrambleToken = (enc) => {
+  try {
+    if (!enc) return '';
+    const raw = atob(enc);
+    let out = '';
+    for (let i = 0; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ __YTEE_TK_KEY.charCodeAt(i % __YTEE_TK_KEY.length));
+    return out;
+  } catch (e) { return ''; }
+};
+
+export const loadStoredSettings = () => {
+  let gmVal = null;
+  let gmAvailable = typeof GM_getValue === 'function';
+  try {
+    if (gmAvailable) gmVal = GM_getValue('ytee-settings', null);
+  } catch (e) { yteeWarn('GM_getValue failed', e); gmAvailable = false; }
+
+  let lsVal = null;
+  try { lsVal = localStorage.getItem('ytee-settings'); } catch (e) { }
+
+  if (gmAvailable && gmVal == null && lsVal != null) __ytee_gmStorageBroken = true;
+
+  let settings = null;
+  if (gmVal) { try { settings = typeof gmVal === 'string' ? JSON.parse(gmVal) : gmVal; } catch (e) { } }
+  if (settings === null && lsVal) { try { settings = JSON.parse(lsVal); } catch (e) { } }
+  if (settings === null) return null;
+
+  let restored = false;
+  if (settings && typeof settings === 'object' && !settings.gistToken) {
+    try {
+      const enc = localStorage.getItem('ytee-gist-tk');
+      if (enc) { settings.gistToken = __ytee_unscrambleToken(enc); restored = !!settings.gistToken; }
+    } catch (e) { }
+  }
+  yteeLog('YTEE load: gmAvailable=', gmAvailable, 'gmValPresent=', gmVal != null, 'lsValPresent=', lsVal != null,
+    'broken=', __ytee_gmStorageBroken, 'tokenFromGM=', !!(settings && settings.gistToken && !restored), 'tokenRestoredFromKey=', restored);
+  return settings;
 };
 
 const SAVE_DEBOUNCE = 400;
@@ -46,6 +90,15 @@ const __ytee_flushStoredSettings = (finalize = false) => {
   try { payload = JSON.stringify(s); } catch (e) { payload = null; }
   if (payload !== null) {
     try { if (hasGM && payload !== __ytee_last_payload) { GM_setValue('ytee-settings', payload); __ytee_last_payload = payload; } } catch (e) { }
+    if (hasGM && !__ytee_gmVerified) {
+      try {
+        const rb = GM_getValue('ytee-settings', null);
+        const rbStr = rb == null ? null : (typeof rb === 'string' ? rb : JSON.stringify(rb));
+        __ytee_gmVerified = rbStr === payload;
+      } catch (e) { }
+      if (!__ytee_gmVerified) __ytee_gmStorageBroken = true;
+    }
+    yteeLog('YTEE save: hasGM=', hasGM, 'gmVerified=', __ytee_gmVerified, 'broken=', __ytee_gmStorageBroken, 'tokenLen=', (s.gistToken || '').length);
     if (!hasGM || finalize) {
       try {
         let safePayload = payload;
@@ -55,6 +108,14 @@ const __ytee_flushStoredSettings = (finalize = false) => {
           try { safePayload = JSON.stringify(s); } finally { s.gistToken = prevToken; }
         }
         localStorage.setItem('ytee-settings', safePayload);
+      } catch (e) { }
+      try {
+        if (s.gistToken) {
+          localStorage.setItem('ytee-gist-tk', __ytee_scrambleToken(s.gistToken));
+          yteeLog('YTEE save: wrote ytee-gist-tk fallback');
+        } else {
+          localStorage.removeItem('ytee-gist-tk');
+        }
       } catch (e) { }
     }
   }
@@ -154,7 +215,7 @@ export const normalizeSettings = (s) => {
     compactMode: _bool(s.compactMode, typeof s.labelMode === 'boolean' ? !s.labelMode : D.compactMode),
     isCollapsed: _bool(s.isCollapsed, D.isCollapsed),
     highContrastUI: _bool(s.highContrastUI, D.highContrastUI),
-    playbackSpeed: _num(s.playbackSpeed, D.playbackSpeed, 0.1, 16),
+    enableBlur: _bool(s.enableBlur, D.enableBlur),
     volumeCache: parseCache(s.volumeCache, enableVolumeCache),
     miniStatsCache: parseCache(s.miniStatsCache),
     miniStatsPos: s.miniStatsPos || D.miniStatsPos,
@@ -171,7 +232,7 @@ export const normalizeSettings = (s) => {
     annotationsCache: parseAnnotationsCache(s.annotationsCache),
   };
   for (const [cacheKey, limit] of [['volumeCache', 200], ['miniStatsCache', 200], ['positionCache', 200], ['favoritesCache', 200], ['annotationsCache', 500]]) {
-    const keys = Object.keys(rs[cacheKey]);
+    const keys = Object.keys(rs[cacheKey]).filter(k => cacheKey !== 'favoritesCache' || rs[cacheKey][k]?.v);
     if (keys.length > limit) {
       keys.sort((a, b) => (rs[cacheKey][a]?.t || 0) - (rs[cacheKey][b]?.t || 0))
         .slice(0, keys.length - limit)

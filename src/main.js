@@ -13,11 +13,16 @@ import {
   parseCache, parseAnnotationsCache, ANNOT_LABEL_MAX, ANNOT_MARKS_MAX, normalizeSettings,
 } from './settings.js';
 import { __ytee_loadMediabunny } from './mediabunny.js';
+import { createGistSync } from './gist-sync.js';
+import { createHistoryTab } from './history-tab.js';
+import { createBookmarks } from './bookmarks.js';
+import { createWatchLater } from './watch-later.js';
+import { createPipButton, createUrlButton, createSpeedControl, SPEED_STEP, SPEED_STEP_FINE, SPEED_DEFAULT } from './toolbar-buttons.js';
+import { createStats } from './stats.js';
 
 if (window.self === window.top) {
   runTopFrameFixes();
 
-// Chat / hyperchat frames — leave them alone.
 } else if (!isChat()) {
   injectCriticalCSS();
   registerSettingsFlush();
@@ -25,18 +30,33 @@ if (window.self === window.top) {
   let currentSettings = loadStoredSettings() || defaultSettings;
 
   let __ytee_visibleBtnCount = 10;
+  let __ytee_uiSig = null;
+
+  const YTEE_BP = {
+    COMPACT_W: 750,  // toolbar may drop labelcollapse, and the settings modal goes dense, below this
+    SHORT_H: 400,    // treated as "small" below this height
+    TINY_H: 180,     // force-collapse the toolbar below this height
+  };
 
   const applyUIStates = (settings) => {
     const w = document.documentElement.clientWidth || window.innerWidth || 800;
     const h = document.documentElement.clientHeight || window.innerHeight || 600;
-    const isSmall = w < 550 || h < 400;
+    const isSmall = w < YTEE_BP.COMPACT_W || h < YTEE_BP.SHORT_H;
+
+    const group = document.getElementById('custom-btn-group');
+    const sig = group ? [
+      w, h, !!settings.compactMode, !!settings.isCollapsed, !!settings.highContrastUI,
+      settings.enableBlur === false, !!(settings.buttons && settings.buttons.vol), __ytee_visibleBtnCount,
+    ].join('|') : null;
+    if (sig !== null && sig === __ytee_uiSig) return;
+    __ytee_uiSig = sig;
 
     let labelsOff = !!settings.compactMode;
     let collapsed = !!settings.isCollapsed;
 
     document.documentElement.dataset.yteeLabels = labelsOff ? '0' : '1';
     document.documentElement.dataset.yteeHighContrast = settings.highContrastUI ? '1' : '0';
-    const group = document.getElementById('custom-btn-group');
+    document.documentElement.dataset.yteeBlur = settings.enableBlur === false ? '0' : '1';
     if (group) {
       group.classList.toggle('collapsed', collapsed);
 
@@ -44,21 +64,22 @@ if (window.self === window.top) {
         const leftReserve = (settings.buttons && settings.buttons.vol) ? 92 : 40;
         const avail = w - leftReserve;
         const SLACK = 24;
-        const measured = group.offsetWidth;
+        let measured = group.offsetWidth;
 
         if (measured > 0) {
           if (!labelsOff && measured > avail + SLACK) {
             labelsOff = true;
             document.documentElement.dataset.yteeLabels = '0';
+            measured = group.offsetWidth;
           }
-          if (!collapsed && (group.offsetWidth > avail + SLACK || h < 180)) {
+          if (!collapsed && (measured > avail + SLACK || h < YTEE_BP.TINY_H)) {
             collapsed = true;
             group.classList.toggle('collapsed', true);
           }
         } else {
           const n = __ytee_visibleBtnCount;
           if (!labelsOff && w < n * 60 + 100) { labelsOff = true; document.documentElement.dataset.yteeLabels = '0'; }
-          if (!collapsed && (w < n * 24 + 100 || h < 180)) { collapsed = true; group.classList.toggle('collapsed', true); }
+          if (!collapsed && (w < n * 24 + 100 || h < YTEE_BP.TINY_H)) { collapsed = true; group.classList.toggle('collapsed', true); }
         }
       }
 
@@ -140,18 +161,25 @@ if (window.self === window.top) {
       if (vid && qualityOverriddenFor === vid) return;
       if (vid && qualityAppliedFor === vid && !force) return;
       try {
-        if (typeof p.setPlaybackQuality === 'function') p.setPlaybackQuality(pref);
-        qualityAppliedFor = vid;
+        let applied = false;
+        if (typeof p.setPlaybackQualityRange === 'function') { p.setPlaybackQualityRange(pref, pref); applied = true; }
+        if (typeof p.setPlaybackQuality === 'function') { p.setPlaybackQuality(pref); applied = true; }
+        if (applied && typeof p.getPlaybackQuality === 'function') {
+          const cur = p.getPlaybackQuality();
+          const curIdx = QUALITY_ORDER.indexOf(cur);
+          const prefIdx = QUALITY_ORDER.indexOf(pref);
+          if (cur && cur !== 'unknown' && curIdx >= prefIdx) qualityAppliedFor = vid;
+        } else if (applied) {
+          qualityAppliedFor = vid;
+        }
       } catch (e) { yteeWarn('YTEE: applyQuality failed', e); }
     };
-
-    let lastHolodexStatus = 'unknown';
 
     const hookPlayerEvents = () => {
       const p = getPlayer();
       if (!p || typeof p.addEventListener !== 'function') return;
       p.addEventListener('onStateChange', (state) => {
-        if (state === 1) applyQuality();
+        if (state === 1 || state === 3) applyQuality();
         if (state === 1) sessionStorage.setItem('ytee-reload-count', '0');
       });
       p.addEventListener('onPlaybackQualityChange', (q) => {
@@ -159,7 +187,9 @@ if (window.self === window.top) {
         const pref = currentSettings.preferredQuality;
         if (!pref || pref === 'auto') return;
         const vid = (() => { try { return getVideoId(p); } catch (e) { return null; } })();
-        if (vid && qualityAppliedFor === vid && typeof level === 'string' && level !== pref) {
+        if (vid && qualityAppliedFor === vid && typeof level === 'string' && level !== pref
+            && QUALITY_ORDER.indexOf(level) > -1
+            && QUALITY_ORDER.indexOf(level) < QUALITY_ORDER.indexOf(pref)) {
           qualityOverriddenFor = vid;
         }
       });
@@ -229,6 +259,14 @@ if (window.self === window.top) {
     };
 
     setTimeout(stampVisit, 3000);
+
+    const { gistRequest, syncGist, trySyncWithLock } = createGistSync({
+      getSettings: () => currentSettings,
+      onBackgroundSynced: () => {
+        if (settingsModal && settingsModal.classList.contains('show') && isHistoryTabActive()) { try { renderHistoryTab(); historyTabDirty = false; } catch (e) { } }
+        else historyTabDirty = true;
+      },
+    });
 
     const startupJitter = Math.floor(Math.random() * 60000);
     let gistSyncStartTimer = null, gistSyncIntervalId = null;
@@ -404,7 +442,7 @@ if (window.self === window.top) {
         e.stopImmediatePropagation(); e.preventDefault(); return;
       }
       if (document.hidden) return;
-      if (annotPanelOpen && annotPanel && annotPanel.contains(e.target)) return;
+      if (isAnnotPanelOpen() && getAnnotPanel() && getAnnotPanel().contains(e.target)) return;
       const shouldHandleSpeed = isHoveringSpeedBtn;
       const shouldHandleVolume = currentSettings.enableScrollVolume && !isHoveringSpeedBtn;
       if (!shouldHandleSpeed && !shouldHandleVolume) return;
@@ -419,7 +457,7 @@ if (window.self === window.top) {
         wheelRafId = 0;
         if (shouldHandleSpeed) {
           const step = isShift ? SPEED_STEP_FINE : SPEED_STEP;
-          applySpeed(targetSpeed + (delta > 0 ? -step : step));
+          applySpeed(getTargetSpeed() + (delta > 0 ? -step : step));
         } else if (shouldHandleVolume) {
           applyVolume(targetVolume + (delta > 0 ? -(currentSettings.volumeStep / 100) : (currentSettings.volumeStep / 100)));
         }
@@ -427,305 +465,15 @@ if (window.self === window.top) {
     };
     document.documentElement.addEventListener("wheel", onWheel, { passive: false });
 
-    // Stats
-    let isStatsOpen = false, isMiniStatsOpen = false, miniStatsTimer = null, miniStatsDelay = 2000;
-    const miniStats = Object.assign(document.createElement("div"), { id: "custom-mini-stats" });
-    const statsBtn = mkBtn('custom-stats-btn', 'stats', 'Stats', 'Stats (Ctrl = Mini)', 'Stats for Nerds (Shift+S)');
-
-    let isDragging = false, startX, startY, startL, startT;
-    miniStats.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      isDragging = true;
-      startX = e.clientX; startY = e.clientY;
-      const rect = miniStats.getBoundingClientRect();
-      startL = rect.left; startT = rect.top;
-      miniStats.style.transition = 'none';
-      window.addEventListener('mousemove', onMiniStatsDrag, { passive: true });
-      window.addEventListener('mouseup', onMiniStatsDragEnd);
-      e.preventDefault();
-    });
-    const onMiniStatsDrag = (e) => {
-      if (!isDragging) return;
-      const x = startL + (e.clientX - startX);
-      const y = startT + (e.clientY - startY);
-      miniStats.style.left = x + 'px';
-      miniStats.style.top = y + 'px';
-      miniStats.style.bottom = 'auto';
-    };
-    const onMiniStatsDragEnd = () => {
-      window.removeEventListener('mousemove', onMiniStatsDrag);
-      window.removeEventListener('mouseup', onMiniStatsDragEnd);
-      if (!isDragging) return;
-      isDragging = false;
-      miniStats.style.transition = '';
-      const rect = miniStats.getBoundingClientRect();
-      const pL = rect.left / window.innerWidth;
-      const pT = rect.top / window.innerHeight;
-      currentSettings.miniStatsPos = { pL, pT };
-      saveStoredSettings(currentSettings);
-    };
-    const applyMiniStatsPos = () => {
-      if (!currentSettings.miniStatsPos || isDragging) return;
-      const { pL, pT } = currentSettings.miniStatsPos;
-      const w = window.innerWidth, h = window.innerHeight;
-      const rect = miniStats.getBoundingClientRect();
-      const x = Math.max(0, Math.min(w - rect.width, pL * w));
-      const y = Math.max(0, Math.min(h - rect.height, pT * h));
-      Object.assign(miniStats.style, { left: x + 'px', top: y + 'px', bottom: 'auto' });
-    };
-    applyMiniStatsPos();
-
-    miniStats.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      currentSettings.miniStatsPos = null;
-      saveStoredSettings(currentSettings);
-      miniStats.style.left = '';
-      miniStats.style.top = '';
-      miniStats.style.bottom = '45px';
-      applyMiniStatsPos();
+    const { miniStats, statsBtn, toggleStats, toggleMiniStats, applyMiniStatsPos, disposeStats } = createStats({
+      video, getPlayer, getSettings: () => currentSettings, isCurrentlyLive,
+      scheduleHistoryRender: () => scheduleHistoryRender(),
     });
 
-    const miniStatsParts = {}, miniStatsWrappers = {};
-    (() => {
-      const mkPart = (key, label) => {
-        const wrap = document.createElement('div');
-        const b = document.createElement('b'); b.textContent = label;
-        const s = document.createElement('span'); s.textContent = '-';
-        wrap.append(b, s);
-        miniStats.appendChild(wrap);
-        miniStatsParts[key] = s;
-        miniStatsWrappers[key] = wrap;
-      };
-      mkPart('bandwidth', 'Speed');
-      mkPart('buffer', 'Buffer');
-      mkPart('latency', 'Latency');
-      mkPart('dropped', 'Drop');
-      mkPart('views', 'Watching');
-    })();
-
-    let lastWatcherTime = 0;
-    let isFetchingViewers = false;
-    let viewerMissStreak = 0;
-    let holodexUnavailable = false;
-    const formatViewers = (n) => {
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-      return String(n);
-    };
-
-    const fetchViewers = (videoId) => {
-      const url = `https://holodex.net/api/v2/videos/${videoId}?include=live_info`;
-      return new Promise((resolve) => {
-        if (typeof GM_xmlhttpRequest === 'undefined') return resolve({ v: '-', live: false });
-        GM_xmlhttpRequest({
-          method: 'GET', url: url, anonymous: true,
-          headers: { "Referer": "https://holodex.net/", "Origin": "https://holodex.net" },
-          onload: (r) => {
-            if (r.status === 200) {
-              try {
-                const json = JSON.parse(r.responseText);
-                lastHolodexStatus = json.status || 'unknown';
-                const v = json.live_viewers;
-                const channelName = json.channel?.name || '';
-                resolve({ v: v && v > 0 ? formatViewers(v) : '-', live: lastHolodexStatus === 'live', channelName });
-              } catch (e) { resolve({ v: '-', live: false }); }
-            } else { resolve({ v: '-', live: false }); }
-          },
-          onerror: () => resolve({ v: '-', live: false }),
-          timeout: 8000
-        });
-      });
-    };
-
-    const updateMiniStats = () => {
-      if (!isMiniStatsOpen) return;
-      try {
-        const p = getPlayer();
-        if (!p) {
-          miniStatsDelay = 10000;
-          return;
-        }
-        const stats = typeof p.getStatsForNerds === 'function' ? p.getStatsForNerds() : null;
-
-        let buffer = null;
-        if (stats?.buffer_health_seconds) {
-          buffer = parseFloat(stats.buffer_health_seconds).toFixed(2);
-        } else if (video.buffered.length > 0) {
-          buffer = (video.buffered.end(video.buffered.length - 1) - video.currentTime).toFixed(2);
-        }
-
-        let latency = null;
-        if (stats?.live_latency_secs) {
-          latency = parseFloat(stats.live_latency_secs);
-        }
-        if (latency == null || latency > 1000) {
-          const isLive = p.getVideoData?.().isLive;
-          if (isLive) {
-            const seekable = video.seekable;
-            if (seekable?.length > 0) {
-              const edge = seekable.end(seekable.length - 1);
-              if (edge - video.currentTime < 1000) latency = Math.max(0, edge - video.currentTime);
-            }
-            if (latency == null || latency > 1000) {
-              const dur = p.getDuration?.();
-              if (dur > 0 && dur - video.currentTime < 1000) latency = Math.max(0, dur - video.currentTime);
-            }
-          }
-        }
-
-        const dropped = video.getVideoPlaybackQuality()?.droppedVideoFrames ?? 0;
-        const formattedLatency = latency != null ? latency.toFixed(2) : 'N/A';
-        const dCount = Number(dropped);
-        let dColor = '';
-        if (dCount > 0 && dCount <= 100) dColor = '#3498db';
-        else if (dCount > 100 && dCount <= 250) dColor = '#f1c40f';
-        else if (dCount > 250 && dCount <= 350) dColor = '#e67e22';
-        else if (dCount > 350) dColor = '#e74c3c';
-
-        let bandwidth = 'N/A';
-        if (stats?.bandwidth_kbps) {
-          const kbps = parseFloat(stats.bandwidth_kbps);
-          if (!isNaN(kbps)) {
-            bandwidth = kbps >= 1000
-              ? (kbps / 1000).toFixed(1) + ' Mbps'
-              : Math.round(kbps) + ' Kbps';
-          }
-        }
-        const setPart = (el, v) => { const s = String(v); if (el.textContent !== s) el.textContent = s; };
-        setPart(miniStatsParts.bandwidth, bandwidth);
-        setPart(miniStatsParts.buffer, buffer != null ? buffer + 's' : 'N/A');
-        setPart(miniStatsParts.latency, formattedLatency !== 'N/A' ? formattedLatency + 's' : 'N/A');
-        setPart(miniStatsParts.dropped, dropped);
-        if (miniStatsParts.dropped.style.color !== dColor) miniStatsParts.dropped.style.color = dColor;
-
-        const now = Date.now();
-        const viewsText = miniStatsParts.views.textContent.trim();
-        const isInitial = viewsText === '-' || viewsText === '';
-        const isLiveNow = isCurrentlyLive(p);
-        const VIEWER_INTERVAL = isInitial ? 8000 : 90000;
-        if (!holodexUnavailable && (isLiveNow || !isInitial) && !isFetchingViewers && now - lastWatcherTime >= VIEWER_INTERVAL) {
-          lastWatcherTime = now;
-          const videoId = getVideoId(p);
-          if (videoId && videoId.length > 5) {
-            isFetchingViewers = true;
-            fetchViewers(videoId).then(res => {
-              const gotViewers = res.v && res.v !== '-';
-              if (gotViewers) {
-                miniStatsParts.views.textContent = res.v;
-                viewerMissStreak = 0;
-              } else {
-                if (res.live === true) viewerMissStreak = 0;
-                else if (++viewerMissStreak >= 3 || lastHolodexStatus === 'past') holodexUnavailable = true;
-                if (isInitial && !holodexUnavailable) lastWatcherTime = 0;
-              }
-              if (res.channelName) {
-                let didUpdate = false;
-                ['volumeCache', 'miniStatsCache', 'positionCache'].forEach(key => {
-                  if (currentSettings[key]?.[videoId] && !currentSettings[key][videoId].channel) {
-                    currentSettings[key][videoId].channel = res.channelName;
-                    didUpdate = true;
-                  }
-                });
-                if (didUpdate) saveStoredSettings(currentSettings);
-              }
-              if (miniStatsWrappers.views) {
-                miniStatsWrappers.views.style.display =
-                  (isLiveNow && lastHolodexStatus !== 'past') ? '' : 'none';
-              }
-            }).finally(() => {
-              isFetchingViewers = false;
-            });
-          }
-        }
-
-        if (video.paused || document.hidden) {
-          miniStatsDelay = 10000;
-        } else if (lastHolodexStatus === 'live') {
-          miniStatsDelay = 2000;
-        } else {
-          miniStatsDelay = 4000;
-        }
-      } catch (e) {
-        console.error('YTEE: updateMiniStats failed', e);
-      }
-    };
-
-    const scheduleMiniStats = () => {
-      clearTimeout(miniStatsTimer);
-      miniStatsTimer = setTimeout(() => {
-        updateMiniStats();
-        if (isMiniStatsOpen) scheduleMiniStats();
-      }, miniStatsDelay);
-    };
-
-    const onVisibilityChange = () => {
-      if (!document.hidden && isMiniStatsOpen) {
-        miniStatsDelay = 2000;
-        scheduleMiniStats();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    const toggleMiniStats = () => {
-      isMiniStatsOpen = !isMiniStatsOpen;
-      miniStats.classList.toggle("show", isMiniStatsOpen);
-      statsBtn.classList.toggle("active", isMiniStatsOpen);
-      clearTimeout(miniStatsTimer);
-      miniStatsTimer = null;
-      if (isMiniStatsOpen) {
-        lastWatcherTime = 0;
-        isFetchingViewers = false;
-        viewerMissStreak = 0;
-        holodexUnavailable = false;
-        updateMiniStats();
-        scheduleMiniStats();
-      }
-      const p = getPlayer();
-      const vid = getVideoId(p);
-      if (vid) {
-        const title = getVideoTitle(p) || "";
-        const channel = getVideoAuthor(p) || "";
-        currentSettings.miniStatsCache[vid] = { v: isMiniStatsOpen, title, channel, t: Date.now() };
-        saveStoredSettings(currentSettings);
-        scheduleHistoryRender();
-      }
-    };
-
-    const toggleStats = (e) => {
-      if (e && e.ctrlKey) { toggleMiniStats(); return; }
-      const p = getPlayer();
-      if (!p) return;
-      if (isStatsOpen && p.hideVideoInfo) { p.hideVideoInfo(); isStatsOpen = false; }
-      else if (p.showVideoInfo) { p.showVideoInfo(); isStatsOpen = true; }
-      statsBtn.classList.toggle("nerds-active", isStatsOpen);
-    };
-    statsBtn.addEventListener("click", toggleStats);
-
-    // Speed
-    const SPEED_MIN = 0.1, SPEED_MAX = 16, SPEED_STEP = 0.1, SPEED_STEP_FINE = 0.01, SPEED_DEFAULT = 1;
-    let targetSpeed = Math.round((video.playbackRate || SPEED_DEFAULT) * 100) / 100;
-    const speedBtn = mkBtn('custom-speed-btn', 'speed', targetSpeed + 'x', 'Speed', 'Playback Speed');
-
-    const updateSpeedBtnText = (rate) => { setBtnLabel(speedBtn, rate + 'x', `Speed: ${rate}x`); };
-
-    const applySpeed = (rate) => {
-      targetSpeed = Math.round(Math.min(SPEED_MAX, Math.max(SPEED_MIN, rate)) * 100) / 100;
-      if (video.playbackRate !== targetSpeed) video.playbackRate = targetSpeed;
-      updateSpeedBtnText(targetSpeed);
-      speedBtn.classList.toggle("modified", targetSpeed !== 1);
-      showSpeedOverlay(targetSpeed);
-      const speedInput = document.getElementById('ytee-precise-speed');
-      if (speedInput && parseFloat(speedInput.value) !== targetSpeed) speedInput.value = targetSpeed;
-    };
-
-    speedBtn.addEventListener("click", (e) => {
-      const step = e.shiftKey ? SPEED_STEP_FINE : SPEED_STEP;
-      const next = targetSpeed + step;
-      applySpeed(next > SPEED_MAX ? SPEED_MIN : next);
+    const { speedBtn, applySpeed, getTargetSpeed } = createSpeedControl({
+      video, showSpeedOverlay,
+      setHoveringSpeedBtn: (v) => { isHoveringSpeedBtn = v; },
     });
-    speedBtn.addEventListener("contextmenu", (e) => { e.preventDefault(); applySpeed(SPEED_DEFAULT); });
-    speedBtn.addEventListener("mouseenter", () => { isHoveringSpeedBtn = true; });
-    speedBtn.addEventListener("mouseleave", () => { isHoveringSpeedBtn = false; });
 
     // Screenshot
     const screenshotBtn = mkBtn('custom-screenshot-btn', 'screenshot', 'Snap', 'Take Screenshot (Ctrl = Save)');
@@ -1124,150 +872,9 @@ if (window.self === window.top) {
       else { startInstantReplay(); }
     });
 
-    // PiP
-    const pipSupported = document.pictureInPictureEnabled && typeof video.requestPictureInPicture === "function";
-    const pipBtn = mkBtn('custom-pip-btn', 'pip', 'PiP', 'Picture-in-Picture');
-    if (pipSupported) {
-      pipBtn.addEventListener("click", async () => {
-        try {
-          if (document.pictureInPictureElement) await document.exitPictureInPicture();
-          else await video.requestPictureInPicture();
-        } catch (err) { console.error("PiP failed:", err); }
-      });
-    } else {
-      pipBtn.style.display = "none";
-    }
-
-    // URL
-    const urlBtn = mkBtn('custom-url-btn', 'url', 'URL', 'Copy URL (Ctrl+Click = with timestamp) \u2022 Middle-Click = Open in YouTube');
-    urlBtn.addEventListener("auxclick", (e) => {
-      if (e.button === 1) {
-        e.preventDefault();
-        const videoId = getVideoId(getPlayer());
-        if (videoId) {
-          let url = `https://youtu.be/${videoId}`;
-          if (e.ctrlKey) url += `?t=${Math.floor(video.currentTime)}`;
-          window.open(url, '_blank');
-        }
-      }
-    });
-    urlBtn.addEventListener("click", async (e) => {
-      try {
-        const videoId = getVideoId(getPlayer());
-        let url = `https://youtu.be/${videoId}`;
-        if (e.ctrlKey) url += `?t=${Math.floor(video.currentTime)}`;
-        let copied = false;
-        if (navigator.clipboard) {
-          try { await navigator.clipboard.writeText(url); copied = true; } catch (clipErr) { }
-        }
-        if (!copied) {
-          const ta = document.createElement('textarea');
-          ta.value = url;
-          ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
-          document.body.appendChild(ta);
-          ta.focus(); ta.select();
-          copied = document.execCommand('copy');
-          document.body.removeChild(ta);
-        }
-        if (copied) {
-          flashBtnResult(urlBtn, '✓ Copied!', 'success');
-        } else { throw new Error('All copy methods failed'); }
-      } catch (err) {
-        console.error("Copy URL failed:", err);
-        flashBtnState(urlBtn, 'error');
-      }
-    });
-
-    // Watch Later
-    const wlBtn = mkBtn('custom-wl-btn', 'wl', 'WL', 'Watch Later');
-    let cachedApiKey = null, cachedContext = null;
-    const INNERTUBE_CACHE_TTL = 24 * 60 * 60 * 1000;
-    try {
-      if (typeof GM_getValue === 'function') {
-        const stored = GM_getValue('ytee-innertube', null);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const age = Date.now() - (parsed.savedAt || 0);
-          if (age < INNERTUBE_CACHE_TTL && parsed.apiKey && parsed.context) { cachedApiKey = parsed.apiKey; cachedContext = parsed.context; }
-        }
-      }
-    } catch (e) { yteeWarn('InnerTube cache read failed', e); }
-
-    const sha1 = async (str) => {
-      const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(str));
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-    };
-    const getSapisid = () => { const m = document.cookie.match(/(?:^|;\s*)(?:__Secure-3PAPISID|SAPISID)=([^;]+)/); return m ? m[1] : null; };
-
-    const getInnertubeConfig = async (videoId) => {
-      if (cachedApiKey && cachedContext) return { apiKey: cachedApiKey, context: cachedContext };
-      const localYtcfg = uw.ytcfg || (uw.yt && uw.yt.config_);
-      if (localYtcfg && localYtcfg.get) {
-        const key = localYtcfg.get("INNERTUBE_API_KEY"), ctx = localYtcfg.get("INNERTUBE_CONTEXT");
-        if (key && ctx) {
-          cachedApiKey = key; cachedContext = ctx;
-          try { if (typeof GM_setValue === 'function') GM_setValue('ytee-innertube', JSON.stringify({ apiKey: key, context: ctx, savedAt: Date.now() })); } catch (e) { }
-          return { apiKey: key, context: ctx };
-        }
-      }
-      return new Promise((resolve, reject) => {
-        if (typeof GM_xmlhttpRequest === "undefined") return reject(new Error("GM_xmlhttpRequest unavailable"));
-        GM_xmlhttpRequest({
-          method: "GET", url: `https://www.youtube.com/watch?v=${videoId}`,
-          headers: { "Accept-Language": navigator.language || "en-US,en;q=0.9" },
-          onload: (res) => {
-            const m = res.responseText.match(/ytcfg\.set\s*\(({[\s\S]+?})\s*\)\s*;/);
-            if (!m) return reject(new Error("ytcfg block not found"));
-            try {
-              const cfg = JSON.parse(m[1]);
-              if (!cfg.INNERTUBE_API_KEY) return reject(new Error("INNERTUBE_API_KEY missing"));
-              cachedApiKey = cfg.INNERTUBE_API_KEY; cachedContext = cfg.INNERTUBE_CONTEXT;
-              try { if (typeof GM_setValue === 'function') GM_setValue('ytee-innertube', JSON.stringify({ apiKey: cachedApiKey, context: cachedContext, savedAt: Date.now() })); } catch (e) { }
-              resolve({ apiKey: cachedApiKey, context: cachedContext });
-            } catch (e) { reject(e); }
-          },
-          onerror: () => reject(new Error("Network error")),
-        });
-      });
-    };
-
-    const clearInnertubeCache = () => {
-      cachedApiKey = null; cachedContext = null;
-      try { if (typeof GM_setValue === 'function') GM_setValue('ytee-innertube', null); } catch (e) { }
-    };
-
-    wlBtn.addEventListener("click", async () => {
-      try {
-        setBtnLabel(wlBtn, '\u2026');
-        const videoId = getVideoId(getPlayer());
-        if (!videoId || videoId.length < 5) { setBtnLabel(wlBtn, '✗ Err'); setTimeout(() => setBtnLabel(wlBtn), 1500); return; }
-        const sapisid = getSapisid();
-        if (!sapisid) { setBtnLabel(wlBtn, '✗ Login'); setTimeout(() => setBtnLabel(wlBtn), 1500); return; }
-        const attemptRequest = async () => {
-          const { apiKey, context } = await getInnertubeConfig(videoId);
-          const ts = Math.floor(Date.now() / 1000);
-          const hashStr = await sha1(`${ts} ${sapisid} https://www.youtube.com`);
-          const sapisidHash = `${ts}_${hashStr}`;
-          const payload = { context, playlistId: "WL", actions: [{ addedVideoId: videoId, action: "ACTION_ADD_VIDEO" }] };
-          return new Promise((resolve, reject) => {
-            if (typeof GM_xmlhttpRequest !== "undefined") {
-              GM_xmlhttpRequest({
-                method: "POST",
-                url: `https://www.youtube.com/youtubei/v1/browse/edit_playlist?key=${apiKey}&prettyPrint=false`,
-                headers: { "Content-Type": "application/json", "X-Origin": "https://www.youtube.com", "X-Goog-AuthUser": "0", "Authorization": `SAPISIDHASH ${sapisidHash}` },
-                data: JSON.stringify(payload),
-                onload: (res) => resolve(res.status),
-                onerror: () => reject(new Error("Network error")),
-              });
-            } else { reject(new Error("GM_xmlhttpRequest required")); }
-          });
-        };
-        let status = await attemptRequest();
-        if (status === 401 || status === 403) { clearInnertubeCache(); status = await attemptRequest(); }
-        if (status === 200) { setBtnLabel(wlBtn, '✓ Saved'); flashBtnState(wlBtn, 'success'); } else { throw new Error(`HTTP ${status}`); }
-        setTimeout(() => setBtnLabel(wlBtn), 1500);
-      } catch (err) { console.error("Watch Later failed:", err); setBtnLabel(wlBtn, '✗ Err'); flashBtnState(wlBtn, 'error'); setTimeout(() => setBtnLabel(wlBtn), 1500); }
-    });
+    const { pipBtn, pipSupported } = createPipButton({ video });
+    const { urlBtn } = createUrlButton({ video, getPlayer });
+    const { wlBtn, clearInnertubeCache } = createWatchLater({ uw, getPlayer });
 
     const toggleBtn = mkBtn('custom-toggle-btn', currentSettings.isCollapsed ? 'expand' : 'hide', '', 'Collapse UI', null, false);
     toggleBtn.addEventListener('click', () => {
@@ -1276,196 +883,11 @@ if (window.self === window.top) {
       applyUIStates(currentSettings);
     });
 
-    // Bookmarks (annotations)
-    const annotBtn = mkBtn('custom-annot-btn', 'annot', 'Notes', 'Notes for this video • right-click drops one');
-
-    const seekTo = (sec) => {
-      const p = getPlayer();
-      try {
-        if (p && typeof p.seekTo === 'function') { p.seekTo(sec, true); return; }
-      } catch (e) { }
-      try { video.currentTime = sec; } catch (e) { }
-    };
-
-    const annotVid = () => { try { return getVideoId(getPlayer()); } catch (e) { return ''; } };
-
-    const getAnnot = (vid) => currentSettings.annotationsCache[vid] || null;
-
-    const ensureAnnot = (vid) => {
-      let a = currentSettings.annotationsCache[vid];
-      if (!a) {
-        const p = getPlayer();
-        a = { marks: [], title: getVideoTitle(p) || '', channel: getVideoAuthor(p) || '', t: Date.now() };
-        currentSettings.annotationsCache[vid] = a;
-      }
-      return a;
-    };
-
-    const cleanupAnnot = (vid) => {
-      const a = currentSettings.annotationsCache[vid];
-      if (a && a.marks.length === 0) delete currentSettings.annotationsCache[vid];
-    };
-
-    const persistAnnot = (vid) => {
-      const a = currentSettings.annotationsCache[vid];
-      if (a) {
-        a.t = Date.now();
-        const p = getPlayer();
-        if (!a.title) a.title = getVideoTitle(p) || '';
-        if (!a.channel) a.channel = getVideoAuthor(p) || '';
-      }
-      cleanupAnnot(vid);
-      saveStoredSettings(currentSettings);
-      scheduleHistoryRender();
-    };
-
-    let annotPanel = null;
-    let annotMarksBox, annotAddBtn;
-    let annotPanelOpen = false;
-    let annotNowTimer = null;
-
-    const updateAnnotNow = () => {
-      if (!annotAddBtn) return;
-      const now = annotAddBtn.querySelector('.ytee-annot-now');
-      if (now) now.textContent = formatClock(video.currentTime);
-    };
-
-    const renderAnnotMarks = () => {
-      const vid = annotVid();
-      const a = getAnnot(vid);
-      annotMarksBox.textContent = '';
-      const marks = a ? a.marks.slice().sort((x, y) => x.s - y.s) : [];
-      if (marks.length === 0) {
-        annotMarksBox.append(Object.assign(document.createElement('div'), { className: 'ytee-annot-empty', textContent: 'No notes yet.' }));
-        return;
-      }
-      marks.forEach((mk) => {
-        const row = Object.assign(document.createElement('div'), { className: 'ytee-annot-mark' });
-        const ts = Object.assign(document.createElement('span'), { className: 'ytee-annot-ts', textContent: formatClock(mk.s), title: 'Jump here' });
-        ts.addEventListener('click', () => { seekTo(mk.s); flashBtnState(annotBtn, 'success', 700); });
-        const lbl = Object.assign(document.createElement('span'), { className: 'ytee-annot-lbl', textContent: mk.label || 'Untitled mark', title: 'Click to rename' });
-        const startEdit = () => {
-          const inp = Object.assign(document.createElement('input'), { value: mk.label, maxLength: ANNOT_LABEL_MAX });
-          lbl.replaceWith(inp);
-          inp.focus(); inp.select();
-          const commit = () => {
-            mk.label = inp.value.trim().slice(0, ANNOT_LABEL_MAX);
-            persistAnnot(vid);
-            renderAnnotMarks();
-          };
-          inp.addEventListener('blur', commit);
-          inp.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-            else if (e.key === 'Escape') { e.preventDefault(); renderAnnotMarks(); }
-          });
-        };
-        lbl.addEventListener('click', startEdit);
-        const copy = Object.assign(document.createElement('button'), { textContent: '🔗', title: 'Copy link at this time' });
-        copy.addEventListener('click', () => {
-          navigator.clipboard.writeText(`https://youtu.be/${vid}?t=${mk.s}`).then(() => flashBtnState(annotBtn, 'success', 700)).catch(() => { });
-        });
-        const del = Object.assign(document.createElement('button'), { textContent: '✕', title: 'Delete note' });
-        del.addEventListener('click', () => {
-          const cur = ensureAnnot(vid);
-          cur.marks = cur.marks.filter(m => m !== mk);
-          persistAnnot(vid);
-          renderAnnotMarks();
-        });
-        row.append(ts, lbl, copy, del);
-        annotMarksBox.append(row);
-      });
-    };
-
-    const refreshAnnotPanel = () => {
-      if (!annotPanel) return;
-      updateAnnotNow();
-      renderAnnotMarks();
-    };
-
-    const buildAnnotPanel = () => {
-      if (annotPanel) return;
-      annotPanel = Object.assign(document.createElement('div'), { id: 'ytee-annot-panel' });
-
-      const head = Object.assign(document.createElement('div'), { className: 'ytee-annot-head' });
-      head.append(document.createTextNode('Notes'));
-      const xBtn = Object.assign(document.createElement('button'), { className: 'ytee-annot-x', textContent: '✕', title: 'Close' });
-      xBtn.addEventListener('click', () => closeAnnotPanel());
-      head.append(xBtn);
-
-      const body = Object.assign(document.createElement('div'), { className: 'ytee-annot-body' });
-
-      annotAddBtn = Object.assign(document.createElement('button'), { className: 'ytee-annot-add', type: 'button' });
-      annotAddBtn.append(
-        Object.assign(document.createElement('span'), { textContent: '🔖' }),
-        document.createTextNode('Add note here'),
-        Object.assign(document.createElement('span'), { className: 'ytee-annot-now', textContent: '0:00' })
-      );
-      annotAddBtn.addEventListener('click', () => addBookmarkAtCurrent(true));
-
-      annotMarksBox = Object.assign(document.createElement('div'), { className: 'ytee-annot-marks' });
-
-      const foot = Object.assign(document.createElement('div'), { className: 'ytee-annot-foot', textContent: 'Click a time to jump. Notes save automatically and appear in Settings → History.' });
-
-      body.append(annotAddBtn, annotMarksBox, foot);
-      annotPanel.append(head, body);
-      document.body.appendChild(annotPanel);
-    };
-
-    const onAnnotOutside = (e) => {
-      if (!annotPanelOpen) return;
-      if (annotPanel.contains(e.target) || annotBtn.contains(e.target)) return;
-      closeAnnotPanel();
-    };
-
-    const openAnnotPanel = () => {
-      buildAnnotPanel();
-      refreshAnnotPanel();
-      annotPanel.classList.add('show');
-      annotBtn.classList.add('active');
-      annotPanelOpen = true;
-      showControls();
-      clearInterval(annotNowTimer);
-      annotNowTimer = setInterval(updateAnnotNow, 250);
-      setTimeout(() => document.addEventListener('mousedown', onAnnotOutside, true), 0);
-    };
-
-    const closeAnnotPanel = () => {
-      if (!annotPanel) return;
-      annotPanel.classList.remove('show');
-      annotBtn.classList.remove('active');
-      annotPanelOpen = false;
-      clearInterval(annotNowTimer);
-      annotNowTimer = null;
-      document.removeEventListener('mousedown', onAnnotOutside, true);
-    };
-
-    const toggleAnnotPanel = () => { annotPanelOpen ? closeAnnotPanel() : openAnnotPanel(); };
-
-    const addBookmarkAtCurrent = (openForEdit) => {
-      const vid = annotVid();
-      if (!vid) return;
-      const cur = ensureAnnot(vid);
-      if (cur.marks.length >= ANNOT_MARKS_MAX) return;
-      const s = Math.round(video.currentTime || 0);
-      const mk = { s, label: '' };
-      cur.marks.push(mk);
-      persistAnnot(vid);
-      if (!annotPanelOpen) openAnnotPanel();
-      else refreshAnnotPanel();
-      renderAnnotMarks();
-      if (openForEdit) {
-        const rows = annotMarksBox.querySelectorAll('.ytee-annot-mark');
-        const sorted = cur.marks.slice().sort((a, b) => a.s - b.s);
-        const idx = sorted.indexOf(mk);
-        const target = rows[idx];
-        if (target) target.querySelector('.ytee-annot-lbl').click();
-      } else {
-        flashBtnState(annotBtn, 'success', 800);
-      }
-    };
-
-    annotBtn.addEventListener('click', toggleAnnotPanel);
-    annotBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); addBookmarkAtCurrent(false); });
+    const { annotBtn, ensureAnnot, persistAnnot, addBookmarkAtCurrent, closeAnnotPanel, isAnnotPanelOpen, getAnnotPanel } = createBookmarks({
+      video, getPlayer, getSettings: () => currentSettings,
+      scheduleHistoryRender: () => scheduleHistoryRender(),
+      showControls: () => showControls(),
+    });
 
     // Settings Modal
     const settingsBtn = mkBtn('custom-settings-btn', 'settings', '', 'Settings', 'Settings Menu', false);
@@ -1578,16 +1000,125 @@ if (window.self === window.top) {
 
       const settingsButtons = Object.assign(document.createElement("div"), { id: "custom-settings-buttons" });
       const restoreBtn = Object.assign(document.createElement("button"), {
-        id: "custom-settings-restore", textContent: "Restore defaults", title: "Resets settings to defaults (keeps caches)"
+        id: "custom-settings-restore", textContent: "Restore defaults",
+        title: "Reset every option and the Mini Stats window position to defaults. Keeps your saved history (volumes, positions, favorites, notes)."
       });
-      const clearCacheBtn = Object.assign(document.createElement("button"), {
-        id: "custom-settings-clear-cache", textContent: "Clear cache", title: "Clears volume, video, mini stats, and InnerTube cache"
+      const resetHotkeysBtn = Object.assign(document.createElement("button"), {
+        id: "custom-settings-reset-hotkeys", textContent: "Reset hotkeys", title: "Restore every key binding to its default"
+      });
+      const clearDataBtn = Object.assign(document.createElement("button"), {
+        id: "custom-settings-clear-data", textContent: "Clear data…",
+        title: "Delete saved data by category — volumes, playback positions, favorites, notes, Mini Stats — on this device and optionally your Gist. Also covers the Mini Stats window position and the Watch Later login cache."
       });
       const cancelBtn = Object.assign(document.createElement("button"), { id: "custom-settings-cancel", textContent: "Cancel" });
       const saveBtn = Object.assign(document.createElement("button"), { id: "custom-settings-save", textContent: "Save changes" });
-      settingsButtons.append(restoreBtn, clearCacheBtn, cancelBtn, saveBtn);
+      const advWrap = Object.assign(document.createElement("details"), { className: "ytee-adv" });
+      const advTray = Object.assign(document.createElement("div"), { className: "ytee-adv-tray" });
+      advTray.append(restoreBtn, resetHotkeysBtn, clearDataBtn);
+      advWrap.append(Object.assign(document.createElement("summary"), { textContent: "Advanced" }), advTray);
+      settingsButtons.append(advWrap, cancelBtn, saveBtn);
 
-      settingsContent.append(settingsHeader, tabsContainer, infoBox, settingsItems, settingsButtons);
+      const clearDataOverlay = Object.assign(document.createElement("div"), { id: "ytee-cleardata-overlay" });
+      const clearDataPanel = Object.assign(document.createElement("div"), { id: "ytee-cleardata-panel" });
+      clearDataOverlay.appendChild(clearDataPanel);
+      const closeClearData = () => clearDataOverlay.classList.remove('show');
+      clearDataOverlay.addEventListener('click', (e) => { if (e.target === clearDataOverlay) closeClearData(); });
+
+      const mkClrRow = (key, label, getCount, checked) => {
+        const row = Object.assign(document.createElement('label'), { className: 'ytee-clr-row' });
+        const cb = Object.assign(document.createElement('input'), { type: 'checkbox', checked });
+        cb.dataset.clr = key;
+        row.append(cb, Object.assign(document.createElement('span'), { className: 'ytee-clr-name', textContent: label }));
+        const n = getCount();
+        if (n !== null) {
+          row.append(Object.assign(document.createElement('span'), { className: 'ytee-clr-count', textContent: String(n) }));
+          if (n === 0) { cb.checked = false; cb.disabled = true; row.classList.add('empty'); }
+        }
+        return row;
+      };
+
+      const buildClearDataPanel = () => {
+        clearDataPanel.textContent = '';
+        clearDataPanel.append(
+          Object.assign(document.createElement('div'), { className: 'ytee-clr-title', textContent: 'Clear saved data' }),
+          Object.assign(document.createElement('div'), { className: 'ytee-clr-sub', textContent: 'Ticked items are deleted. This cannot be undone.' }),
+          Object.assign(document.createElement('div'), { className: 'ytee-clr-head', textContent: 'History (shown in the History tab)' }),
+        );
+        [
+          ['volumeCache', 'Volumes', () => Object.keys(currentSettings.volumeCache || {}).length],
+          ['positionCache', 'Playback positions', () => Object.keys(currentSettings.positionCache || {}).length],
+          ['favoritesCache', 'Favorites', () => Object.keys(currentSettings.favoritesCache || {}).length],
+          ['annotationsCache', 'Notes', () => Object.keys(currentSettings.annotationsCache || {}).length],
+          ['miniStatsCache', 'Mini Stats toggles', () => Object.keys(currentSettings.miniStatsCache || {}).length],
+        ].forEach(([k, label, cnt]) => clearDataPanel.append(mkClrRow(k, label, cnt, true)));
+
+        const gistConfigured = currentSettings.enableGistSync && currentSettings.gistToken && currentSettings.gistId;
+        if (gistConfigured) {
+          const gr = Object.assign(document.createElement('label'), { className: 'ytee-clr-row' });
+          const gcb = Object.assign(document.createElement('input'), { type: 'checkbox', checked: true });
+          gcb.dataset.clr = 'gist';
+          gr.append(gcb, Object.assign(document.createElement('span'), { className: 'ytee-clr-name', textContent: 'Also push the change to your Gist' }));
+          clearDataPanel.append(gr);
+        }
+
+        clearDataPanel.append(Object.assign(document.createElement('div'), { className: 'ytee-clr-head', textContent: 'Other' }));
+        clearDataPanel.append(mkClrRow('miniStatsPos', 'Mini Stats window position', () => currentSettings.miniStatsPos ? 1 : 0, false));
+        const wr = Object.assign(document.createElement('label'), { className: 'ytee-clr-row' });
+        const wcb = Object.assign(document.createElement('input'), { type: 'checkbox', checked: false });
+        wcb.dataset.clr = 'innertube';
+        wr.append(wcb, Object.assign(document.createElement('span'), { className: 'ytee-clr-name', textContent: 'Watch Later login cache' }));
+        clearDataPanel.append(wr);
+
+        const foot = Object.assign(document.createElement('div'), { className: 'ytee-clr-foot' });
+        const cancelSelBtn = Object.assign(document.createElement('button'), { className: 'ytee-clr-cancel', textContent: 'Cancel' });
+        const clearSelBtn = Object.assign(document.createElement('button'), { className: 'ytee-clr-go', textContent: 'Clear selected' });
+        cancelSelBtn.addEventListener('click', closeClearData);
+        clearSelBtn.addEventListener('click', () => {
+          const checked = [...clearDataPanel.querySelectorAll('input[data-clr]:checked')].map(c => c.dataset.clr);
+          if (checked.length === 0) { closeClearData(); return; }
+          ['volumeCache', 'positionCache', 'favoritesCache', 'annotationsCache', 'miniStatsCache'].forEach(k => {
+            if (checked.includes(k)) currentSettings[k] = {};
+          });
+          if (checked.includes('miniStatsPos')) {
+            currentSettings.miniStatsPos = null;
+            try { if (miniStats && miniStats.style) { miniStats.style.left = ''; miniStats.style.top = ''; miniStats.style.bottom = '45px'; } } catch (e) { }
+          }
+          if (checked.includes('innertube')) clearInnertubeCache();
+          saveStoredSettings(currentSettings, { immediate: true });
+          if (isHistoryTabActive()) { try { renderHistoryTab(); } catch (e) { } historyTabDirty = false; } else { historyTabDirty = true; }
+
+          if (checked.includes('gist') && gistConfigured) {
+            clearSelBtn.disabled = true; cancelSelBtn.disabled = true;
+            clearSelBtn.textContent = 'Updating Gist…';
+            gistRequest('PATCH', currentSettings.gistId, currentSettings.gistToken, {
+              files: { 'ytee-history.json': { content: JSON.stringify({
+                ytee_history_export: true,
+                volumeCache: currentSettings.volumeCache,
+                positionCache: currentSettings.positionCache,
+                miniStatsCache: currentSettings.miniStatsCache,
+                favoritesCache: currentSettings.favoritesCache,
+                annotationsCache: currentSettings.annotationsCache,
+              }, null, 2) } }
+            }).then((r) => {
+              const ok = r.status === 200 || r.status === 201;
+              if (ok) { currentSettings.gistSyncLastTime = Date.now(); saveStoredSettings(currentSettings, { immediate: true }); }
+              clearSelBtn.textContent = ok ? 'Cleared ✓' : 'Local done · Gist failed';
+              setTimeout(closeClearData, ok ? 650 : 1900);
+            }).catch(() => {
+              clearSelBtn.textContent = 'Local done · Gist failed';
+              setTimeout(closeClearData, 1900);
+            });
+          } else {
+            clearSelBtn.textContent = 'Cleared ✓';
+            setTimeout(closeClearData, 550);
+          }
+        });
+        foot.append(cancelSelBtn, clearSelBtn);
+        clearDataPanel.append(foot);
+      };
+      clearDataBtn.addEventListener('click', () => { buildClearDataPanel(); clearDataOverlay.classList.add('show'); });
+
+      settingsContent.append(settingsHeader, tabsContainer, infoBox, settingsItems, settingsButtons, clearDataOverlay);
       settingsModal.appendChild(settingsContent);
       document.body.appendChild(settingsModal);
 
@@ -1603,9 +1134,12 @@ if (window.self === window.top) {
         }
         clearTimeout(restoreConfirmTimeout);
         restoreBtn.classList.remove('confirm');
-        const preserved = { volumeCache: currentSettings.volumeCache, positionCache: currentSettings.positionCache, miniStatsCache: currentSettings.miniStatsCache, miniStatsPos: currentSettings.miniStatsPos, favoritesCache: currentSettings.favoritesCache, annotationsCache: currentSettings.annotationsCache };
+        const preserved = { volumeCache: currentSettings.volumeCache, positionCache: currentSettings.positionCache, miniStatsCache: currentSettings.miniStatsCache, favoritesCache: currentSettings.favoritesCache, annotationsCache: currentSettings.annotationsCache };
         currentSettings = Object.assign(structuredClone(defaultSettings), preserved);
         saveStoredSettings(currentSettings, { immediate: true });
+        try {
+          if (miniStats && miniStats.style) { miniStats.style.left = ''; miniStats.style.top = ''; miniStats.style.bottom = '45px'; }
+        } catch (e) { }
         applyUIStates(currentSettings);
         restoreBtn.classList.add('success');
         restoreBtn.textContent = 'Restored!'; restoreBtn.disabled = true;
@@ -1617,31 +1151,24 @@ if (window.self === window.top) {
         }, 1500);
       });
 
-      let clearConfirmTimeout = null;
-      clearCacheBtn.addEventListener('click', () => {
-        if (!clearCacheBtn.classList.contains('confirm')) {
-          clearCacheBtn.classList.add('confirm');
-          clearCacheBtn.textContent = 'Confirm clear?';
-          clearConfirmTimeout = setTimeout(() => { clearCacheBtn.classList.remove('confirm'); clearCacheBtn.textContent = 'Clear cache'; }, 3000);
+      let resetHkConfirmTimeout = null;
+      resetHotkeysBtn.addEventListener('click', () => {
+        if (!resetHotkeysBtn.classList.contains('confirm')) {
+          resetHotkeysBtn.classList.add('confirm');
+          resetHotkeysBtn.textContent = 'Confirm reset?';
+          resetHkConfirmTimeout = setTimeout(() => { resetHotkeysBtn.classList.remove('confirm'); resetHotkeysBtn.textContent = 'Reset hotkeys'; }, 3000);
           return;
         }
-        clearTimeout(clearConfirmTimeout);
-        clearCacheBtn.classList.remove('confirm');
-        currentSettings.volumeCache = {};
-        currentSettings.positionCache = {};
-        currentSettings.miniStatsCache = {};
-        currentSettings.miniStatsPos = null;
-        clearInnertubeCache();
-        saveStoredSettings(currentSettings, { immediate: true });
-        try {
-          if (miniStats && miniStats.style) {
-            miniStats.style.left = ''; miniStats.style.top = ''; miniStats.style.bottom = '45px';
-          }
-        } catch (e) { }
-        if (isHistoryTabActive()) { renderHistoryTab(); historyTabDirty = false; } else { historyTabDirty = true; }
-        clearCacheBtn.classList.add('success');
-        clearCacheBtn.textContent = 'Cleared!'; clearCacheBtn.disabled = true;
-        setTimeout(() => { clearCacheBtn.classList.remove('success'); clearCacheBtn.textContent = 'Clear cache'; clearCacheBtn.disabled = false; }, 1500);
+        clearTimeout(resetHkConfirmTimeout);
+        resetHotkeysBtn.classList.remove('confirm');
+        Object.keys(defaultSettings.hotkeys).forEach(k => {
+          const el = document.getElementById(`hk-${k}`);
+          if (el) el.value = defaultSettings.hotkeys[k];
+        });
+        refreshHkConflicts();
+        resetHotkeysBtn.classList.add('success');
+        resetHotkeysBtn.textContent = 'Reset!'; resetHotkeysBtn.disabled = true;
+        setTimeout(() => { resetHotkeysBtn.classList.remove('success'); resetHotkeysBtn.textContent = 'Reset hotkeys'; resetHotkeysBtn.disabled = false; }, 1500);
       });
 
       saveBtn.addEventListener('click', () => {
@@ -1654,6 +1181,17 @@ if (window.self === window.top) {
           const el = document.getElementById(`hk-${key}`);
           if (el) newSettings.hotkeys[key] = sanitizeHotkeyInput(el.value);
         });
+        const hotkeysChanged = Object.keys(defaultSettings.hotkeys).some(
+          k => (currentSettings.hotkeys[k] || '') !== (newSettings.hotkeys[k] || '')
+        );
+        if (hotkeysChanged && refreshHkConflicts()) {
+          [...document.querySelectorAll('#ytee-settings-tabs .ytee-tab')].find(t => t.textContent.trim() === 'Hotkeys')?.click();
+          const prev = saveBtn.textContent;
+          saveBtn.textContent = 'Fix hotkey conflicts first';
+          saveBtn.style.background = '#ff4444';
+          setTimeout(() => { saveBtn.textContent = prev; saveBtn.style.background = ''; }, 2200);
+          return;
+        }
         newSettings.volumeBoostLevel = Number(document.getElementById('volume-boost-level').value) || 1;
         newSettings.enableVolumeBoost = document.getElementById('ytee-enable-volume-boost').checked;
         newSettings.enableScrollVolume = document.getElementById('ytee-enable-scroll-volume').checked;
@@ -1674,6 +1212,7 @@ if (window.self === window.top) {
         newSettings.sleepTimerFadeOut = (() => { const el = document.getElementById('ytee-sleep-fade'); return el ? el.checked : false; })();
         newSettings.compactMode = document.getElementById('ytee-compact-mode').checked;
         newSettings.highContrastUI = document.getElementById('ytee-high-contrast').checked;
+        newSettings.enableBlur = (() => { const el = document.getElementById('ytee-enable-blur'); return el ? el.checked : true; })();
         newSettings.alwaysShowMiniStats = document.getElementById('ytee-always-show-mini-stats').checked;
         newSettings.enableGistSync = (() => { const el = document.getElementById('ytee-enable-gist-sync'); return el ? el.checked : false; })();
         newSettings.gistToken = (() => { const el = document.getElementById('ytee-gist-token'); return el ? el.value.trim() : ''; })();
@@ -1710,7 +1249,8 @@ if (window.self === window.top) {
       const div = Object.assign(document.createElement('div'), { className: 'setting-item' });
       const textWrap = Object.assign(document.createElement('div'), { className: 'setting-text' });
       const lbl = Object.assign(document.createElement('label'), { className: 'setting-title', textContent: title });
-      if (control && control.id) lbl.htmlFor = control.id;
+      const ctrlId = control && (control.id || control.querySelector?.('input,select,textarea,button')?.id);
+      if (ctrlId) lbl.htmlFor = ctrlId;
       const d = Object.assign(document.createElement('div'), { className: 'setting-desc', textContent: desc });
       textWrap.append(lbl, d);
       div.append(textWrap);
@@ -1739,936 +1279,16 @@ if (window.self === window.top) {
       return b;
     };
 
-    let historyRenderTimer = null;
-    let historyRenderRaf = 0;
-    const scheduleHistoryRender = () => {
-      if (!settingsModal || !settingsModal.classList.contains('show') || !isHistoryTabActive()) { historyTabDirty = true; return; }
-      clearTimeout(historyRenderTimer);
-      historyRenderTimer = setTimeout(() => {
-        try { renderHistoryTab(); historyTabDirty = false; } catch (e) { }
-      }, 500);
-    };
-
-    const syncGist = (onDone) => {
-      const token = currentSettings.gistToken;
-      const gistId = currentSettings.gistId;
-      if (!token || !gistId) { if (onDone) onDone('error'); return; }
-
-      const pushToGist = () => {
-        GM_xmlhttpRequest({
-          method: 'PATCH',
-          url: `https://api.github.com/gists/${gistId}`,
-          headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
-          data: JSON.stringify({
-            files: {
-              'ytee-history.json': {
-                content: JSON.stringify({
-                  ytee_history_export: true,
-                  volumeCache: currentSettings.volumeCache,
-                  positionCache: currentSettings.positionCache,
-                  miniStatsCache: currentSettings.miniStatsCache,
-                  favoritesCache: currentSettings.favoritesCache,
-                  annotationsCache: currentSettings.annotationsCache
-                }, null, 2)
-              }
-            }
-          }),
-          onload: (pr) => {
-            if (pr.status === 200 || pr.status === 201) {
-              currentSettings.gistSyncLastTime = Date.now();
-              saveStoredSettings(currentSettings, { immediate: true });
-              if (onDone) onDone('success');
-            } else { if (onDone) onDone('error'); }
-          },
-          onerror: () => { if (onDone) onDone('error'); }
-        });
-      };
-
-      GM_xmlhttpRequest({
-        method: 'GET',
-        url: `https://api.github.com/gists/${gistId}`,
-        headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' },
-        onload: (r) => {
-          if (r.status === 404) { pushToGist(); return; }
-          if (r.status !== 200) { if (onDone) onDone('error'); return; }
-          try {
-            const gistData = JSON.parse(r.responseText);
-            const file = gistData.files?.['ytee-history.json'];
-            if (file?.content) {
-              const remote = JSON.parse(file.content);
-              const mergeCache = (local, rem) => {
-                const merged = Object.assign({}, local);
-                for (const vid in rem) {
-                  const rt = rem[vid]?.t || 0;
-                  const lt = local[vid]?.t || 0;
-                  if (rt > lt) merged[vid] = rem[vid];
-                }
-                return merged;
-              };
-              if (remote.volumeCache) currentSettings.volumeCache = mergeCache(currentSettings.volumeCache, remote.volumeCache);
-              if (remote.positionCache) currentSettings.positionCache = mergeCache(currentSettings.positionCache, remote.positionCache);
-              if (remote.miniStatsCache) currentSettings.miniStatsCache = mergeCache(currentSettings.miniStatsCache, remote.miniStatsCache);
-              if (remote.favoritesCache) currentSettings.favoritesCache = mergeCache(currentSettings.favoritesCache, remote.favoritesCache);
-              if (remote.annotationsCache && typeof remote.annotationsCache === 'object') {
-                const rem = parseAnnotationsCache(remote.annotationsCache);
-                const loc = currentSettings.annotationsCache || {};
-                for (const vid in rem) {
-                  const r = rem[vid], l = loc[vid];
-                  if (!l) { loc[vid] = r; continue; }
-                  const markMap = new Map();
-                  [...l.marks, ...r.marks].forEach(m => {
-                    const prev = markMap.get(m.s);
-                    if (!prev || (m.label && m.label.length > prev.label.length)) markMap.set(m.s, m);
-                  });
-                  loc[vid] = {
-                    marks: [...markMap.values()].sort((a, b) => a.s - b.s).slice(0, ANNOT_MARKS_MAX),
-                    title: l.title || r.title, channel: l.channel || r.channel,
-                    t: Math.max(l.t || 0, r.t || 0),
-                  };
-                }
-                currentSettings.annotationsCache = parseAnnotationsCache(loc);
-              }
-            }
-          } catch (e) { }
-          pushToGist();
-        },
-        onerror: () => { if (onDone) onDone('error'); }
-      });
-    };
-
-    const trySyncWithLock = () => {
-      if (!currentSettings.enableGistSync || !currentSettings.gistToken || !currentSettings.gistId) return;
-      const now = Date.now();
-      const lock = GM_getValue('ytee-sync-lock', null);
-      if (lock && (now - lock) < 30000) return;
-      GM_setValue('ytee-sync-lock', now);
-      const fresh = loadStoredSettings();
-      const intervalMs = (fresh.gistSyncInterval || 180) * 60 * 1000;
-      if ((now - (fresh.gistSyncLastTime || 0)) < intervalMs) {
-        GM_setValue('ytee-sync-lock', null);
-        return;
-      }
-      syncGist((status) => {
-        GM_setValue('ytee-sync-lock', null);
-        if (settingsModal && settingsModal.classList.contains('show') && isHistoryTabActive()) { try { renderHistoryTab(); historyTabDirty = false; } catch (e) { } }
-        else historyTabDirty = true;
-      });
-    };
-
-    let historySortDescending = true;
     let historyViewMode = currentSettings.historyViewMode || 'list';
-    let historyFavOnly = false;
-    let historyBookmarkView = false;
-    let bookmarkFocusVid = null;
-    const bookmarkGroupExpanded = {};
-    let pendingRefreshDone = false;
-
-    const updateHistorySortButtonLabel = (button) => {
-      button.textContent = historySortDescending ? '\u2193' : '\u2191';
-      button.title = historySortDescending ? 'Switch to oldest first' : 'Switch to newest first';
-    };
-
-    const renderHistoryTab = () => {
-      const h = tabContents['tab-history'];
-      if (!h) return;
-      if (historyRenderRaf) { cancelAnimationFrame(historyRenderRaf); historyRenderRaf = 0; }
-      while (h.firstChild) h.removeChild(h.firstChild);
-
-      const headerRow = Object.assign(document.createElement('div'), {
-        style: 'display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;'
-      });
-      const mkCtrlBtn = (icon, title) => mkActionBtn('circle', icon, title);
-
-      const refreshBtn = mkCtrlBtn('\u27F3', 'Refresh history list');
-      refreshBtn.style.fontSize = '16px';
-
-      if (pendingRefreshDone) {
-        pendingRefreshDone = false;
-        refreshBtn.textContent = '✓';
-        refreshBtn.style.color = '#7ddf7d';
-        setTimeout(() => { refreshBtn.textContent = '\u27F3'; refreshBtn.style.color = ''; }, 1200);
-      }
-
-      refreshBtn.addEventListener('click', () => {
-        if (refreshBtn._spinActive) return;
-        refreshBtn._spinActive = true;
-        refreshBtn.disabled = true;
-        refreshBtn.setAttribute('aria-busy', 'true');
-        const spinDuration = 600;
-        const start = performance.now();
-        let rafId;
-        const tick = (ts) => {
-          const elapsed = ts - start;
-          const angle = (elapsed / spinDuration) * 720;
-          refreshBtn.style.transform = `rotate(${angle}deg) scale(0.92)`;
-          if (elapsed < spinDuration) rafId = requestAnimationFrame(tick);
-          else {
-            refreshBtn.style.transform = '';
-            refreshBtn.disabled = false;
-            refreshBtn.removeAttribute('aria-busy');
-            refreshBtn._spinActive = false;
-            if (rafId) cancelAnimationFrame(rafId);
-          }
-        };
-        rafId = requestAnimationFrame(tick);
-        pendingRefreshDone = true;
-        try { renderHistoryTab(); } catch (e) { console.error(e); }
-      });
-
-      const sortBtn = mkCtrlBtn(historySortDescending ? '\u2193' : '\u2191', historySortDescending ? 'Switch to oldest first' : 'Switch to newest first');
-      sortBtn.addEventListener('click', () => {
-        historySortDescending = !historySortDescending;
-        updateHistorySortButtonLabel(sortBtn);
-        renderHistoryTab();
-      });
-
-      const importInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.json', style: 'display:none;' });
-      importInput.addEventListener('change', () => {
-        const file = importInput.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          try {
-            const data = JSON.parse(ev.target.result);
-            if (!data.ytee_history_export) throw new Error('Not a valid YTEE history file');
-            if (data.volumeCache) Object.assign(currentSettings.volumeCache, parseCache(data.volumeCache));
-            if (data.positionCache) Object.assign(currentSettings.positionCache, parseCache(data.positionCache));
-            if (data.miniStatsCache) Object.assign(currentSettings.miniStatsCache, parseCache(data.miniStatsCache));
-            if (data.favoritesCache) Object.assign(currentSettings.favoritesCache, parseCache(data.favoritesCache));
-            if (data.annotationsCache) Object.assign(currentSettings.annotationsCache, parseAnnotationsCache(data.annotationsCache));
-            saveStoredSettings(currentSettings, { immediate: true });
-            renderHistoryTab();
-            flashBtnState(footerImportBtn, 'success');
-          } catch (e) { flashBtnState(footerImportBtn, 'error'); }
-        };
-        reader.readAsText(file);
-        importInput.value = '';
-      });
-
-      const controls = Object.assign(document.createElement('div'), { style: 'display:flex; gap:6px; align-items:center;' });
-
-      const favFilterBtn = Object.assign(document.createElement('button'), {
-        textContent: '★ Favorites only',
-        title: 'Show only favorited videos',
-        style: `display:inline-flex; align-items:center; gap:5px; padding:4px 10px; height:28px; font-size:11px; font-weight:600; border-radius:6px; cursor:pointer; flex-shrink:0; transition:background 0.15s, color 0.15s, border-color 0.15s; ${historyFavOnly
-            ? 'background:var(--ytee-stats-bg); color:var(--ytee-stats-color); border:1px solid var(--ytee-stats-border);'
-            : 'background:transparent; color:rgba(255,255,255,0.5); border:1px solid rgba(255,255,255,0.12);'
-          }`
-      });
-      favFilterBtn.addEventListener('click', () => {
-        historyFavOnly = !historyFavOnly;
-        renderHistoryTab();
-      });
-
-      if (currentSettings.enableGistSync && currentSettings.gistToken && currentSettings.gistId) {
-        const syncBtn = Object.assign(document.createElement('button'), {
-          title: 'Sync history with GitHub Gist',
-          style: 'display:inline-flex; align-items:center; gap:5px; padding:4px 10px; height:28px; font-size:11px; background:rgba(125,222,255,0.1); color:#7ddeff; border:1px solid rgba(125,222,255,0.25); border-radius:5px; cursor:pointer; flex-shrink:0; transition:opacity 0.15s;'
-        });
-        const syncIcon = Object.assign(document.createElement('span'), { textContent: '\u2601', style: 'font-size:12px;' });
-        const syncLabel = Object.assign(document.createElement('span'), { textContent: 'Sync' });
-        syncBtn.append(syncIcon, syncLabel);
-        syncBtn.addEventListener('click', () => {
-          if (syncBtn._syncing) return;
-          syncBtn._syncing = true;
-          syncLabel.textContent = 'Syncing\u2026';
-          syncBtn.style.opacity = '0.6';
-          syncGist((status) => {
-            syncBtn._syncing = false;
-            syncBtn.style.opacity = '';
-            if (status === 'success') { syncLabel.textContent = '✓ Synced'; syncBtn.style.color = '#7ddf7d'; syncBtn.style.borderColor = 'rgba(125,223,125,0.25)'; }
-            else { syncLabel.textContent = '✗ Failed'; syncBtn.style.color = '#ff5555'; syncBtn.style.borderColor = 'rgba(255,85,85,0.25)'; }
-            setTimeout(() => { syncLabel.textContent = 'Sync'; syncBtn.style.color = '#7ddeff'; syncBtn.style.borderColor = 'rgba(125,222,255,0.25)'; }, 2000);
-            renderHistoryTab();
-          });
-        });
-        const viewBtnS = mkCtrlBtn(historyViewMode === 'list' ? '\u229E' : '\u2261', historyViewMode === 'list' ? 'Switch to grid view' : 'Switch to list view');
-        viewBtnS.addEventListener('click', () => {
-          historyViewMode = historyViewMode === 'list' ? 'grid' : 'list';
-          currentSettings.historyViewMode = historyViewMode;
-          saveStoredSettings(currentSettings);
-          renderHistoryTab();
-        });
-        controls.append(favFilterBtn, syncBtn, refreshBtn, sortBtn, viewBtnS);
-      } else {
-        const viewBtnL = mkCtrlBtn(historyViewMode === 'list' ? '\u229E' : '\u2261', historyViewMode === 'list' ? 'Switch to grid view' : 'Switch to list view');
-        viewBtnL.addEventListener('click', () => {
-          historyViewMode = historyViewMode === 'list' ? 'grid' : 'list';
-          currentSettings.historyViewMode = historyViewMode;
-          saveStoredSettings(currentSettings);
-          renderHistoryTab();
-        });
-        controls.append(favFilterBtn, refreshBtn, sortBtn, viewBtnL);
-      }
-
-      headerRow.append(mkSection('Saved Video History'), controls);
-      h.append(headerRow);
-
-      const subTabs = Object.assign(document.createElement('div'), { style: 'display:inline-flex; gap:2px; padding:3px; background:rgba(0,0,0,0.3); border-radius:8px; margin-bottom:14px;' });
-      [['Videos', false], ['Notes', true]].forEach(([label, isBk]) => {
-        const b = Object.assign(document.createElement('button'), {
-          textContent: label,
-          style: `font-size:11.5px; font-weight:600; padding:4px 12px; border:none; border-radius:6px; cursor:pointer; ${historyBookmarkView === isBk ? 'color:#fff; background:rgba(255,255,255,0.09);' : 'color:rgba(255,255,255,0.45); background:transparent;'}`
-        });
-        b.addEventListener('click', () => {
-          if (historyBookmarkView === isBk && !(isBk && bookmarkFocusVid)) return;
-          historyBookmarkView = isBk;
-          bookmarkFocusVid = null;
-          renderHistoryTab();
-        });
-        subTabs.append(b);
-      });
-      h.append(subTabs);
-
-      if (currentSettings.enableGistSync && currentSettings.gistSyncLastTime > 0) {
-        const lastSyncedRow = Object.assign(document.createElement('div'), {
-          style: 'font-size:10px; color:rgba(255,255,255,0.3); margin-top:-6px; margin-bottom:10px;'
-        });
-        const d = new Date(currentSettings.gistSyncLastTime);
-        const diffMs = Date.now() - d;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHrs = Math.floor(diffMs / 3600000);
-        const timeStr = diffMins < 1 ? 'just now' : diffMins < 60 ? `${diffMins}m ago` : diffHrs < 24 ? `${diffHrs}h ago` : d.toLocaleDateString();
-        const syncedSpan = Object.assign(document.createElement('span'), { textContent: timeStr, style: 'color:#7ddf7d;' });
-        lastSyncedRow.append(document.createTextNode('Last synced: '), syncedSpan);
-        h.append(lastSyncedRow);
-      }
-
-      const allVids = [...new Set([
-        ...Object.keys(currentSettings.volumeCache || {}),
-        ...Object.keys(currentSettings.positionCache || {}),
-        ...Object.keys(currentSettings.miniStatsCache || {}),
-        ...Object.keys(currentSettings.favoritesCache || {}),
-        ...Object.keys(currentSettings.annotationsCache || {})
-      ])];
-
-      if (allVids.length === 0) { h.append(mkNote('No history saved yet.')); return; }
-
-      const isFavorited = (vid) => !!(currentSettings.favoritesCache[vid] && currentSettings.favoritesCache[vid].v);
-
-      const getTimestamp = (vid) => {
-        const volObj = currentSettings.volumeCache[vid];
-        const posObj = currentSettings.positionCache[vid];
-        const msObj = currentSettings.miniStatsCache[vid];
-        const favObj = currentSettings.favoritesCache[vid];
-        const annObj = currentSettings.annotationsCache[vid];
-        return Math.max(
-          volObj && volObj.t ? volObj.t : 0,
-          posObj && posObj.t ? posObj.t : 0,
-          msObj && msObj.t ? msObj.t : 0,
-          favObj && favObj.t ? favObj.t : 0,
-          annObj && annObj.t ? annObj.t : 0
-        );
-      };
-
-      const tsByVid = new Map(allVids.map(v => [v, getTimestamp(v)]));
-      allVids.sort((a, b) => historySortDescending ? tsByVid.get(b) - tsByVid.get(a) : tsByVid.get(a) - tsByVid.get(b));
-
-      const getDateLabel = (timestamp) => {
-        if (!timestamp) return null;
-        const date = new Date(timestamp);
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const itemDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-        const diffDays = Math.round((today - itemDate) / 86400000);
-        if (diffDays === 0) return 'Today';
-        if (diffDays === 1) return 'Yesterday';
-        return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      };
-      const mkDateSeparator = (label) => {
-        const sep = Object.assign(document.createElement('div'), {
-          style: 'display:flex; align-items:center; gap:10px; margin:10px 0 4px; padding:0 2px;'
-        });
-        const mkLine = () => Object.assign(document.createElement('div'), { style: 'flex:1; height:1px; background:rgba(255,255,255,0.15);' });
-        const text = Object.assign(document.createElement('span'), {
-          textContent: label,
-          style: 'font-size:10px; color:rgba(255,255,255,0.4); white-space:nowrap; text-transform:uppercase; letter-spacing:0.06em;'
-        });
-        sep.append(mkLine(), text, mkLine());
-        return sep;
-      };
-      let lastDateLabel = null;
-
-      const mkHistBtn = (label, title, color) => mkActionBtn('pill', label, title, color);
-
-      const bookmarkCount = (vid) => {
-        const a = currentSettings.annotationsCache[vid];
-        return a && a.marks ? a.marks.length : 0;
-      };
-
-      const mkBookmarkBadge = (vid) => {
-        const n = bookmarkCount(vid);
-        if (!n) return null;
-        const b = Object.assign(document.createElement('span'), {
-          textContent: '🔖 ' + n,
-          title: n + ' note' + (n === 1 ? '' : 's') + ' — jump to this video’s notes',
-          style: 'font-size:9.5px; color:rgba(245,181,61,0.9); background:rgba(245,181,61,0.12); border:1px solid rgba(245,181,61,0.3); border-radius:4px; padding:1px 6px; white-space:nowrap; cursor:pointer;'
-        });
-        b.addEventListener('click', (e) => {
-          e.stopPropagation();
-          historyBookmarkView = true;
-          bookmarkFocusVid = vid;
-          bookmarkGroupExpanded[vid] = true;
-          renderHistoryTab();
-        });
-        return b;
-      };
-
-      const buildBookmarkGroup = (vid) => {
-        const a0 = currentSettings.annotationsCache[vid];
-        if (!a0 || !a0.marks.length) return null;
-        const titleText = a0.title || currentSettings.volumeCache[vid]?.title || currentSettings.positionCache[vid]?.title
-          || currentSettings.favoritesCache[vid]?.title || vid;
-        const grp = Object.assign(document.createElement('div'), { style: 'margin-bottom:14px;' });
-        const rerender = () => { const n = buildBookmarkGroup(vid); if (n) grp.replaceWith(n); else grp.remove(); };
-
-        const head = Object.assign(document.createElement('div'), {
-          style: 'display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:12px; font-weight:600; padding:6px 4px; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:4px;'
-        });
-        const miniThumb = Object.assign(document.createElement('img'), {
-          src: `https://img.youtube.com/vi/${vid}/mqdefault.jpg`, alt: '', width: 40, height: 22, loading: 'lazy',
-          style: 'width:40px; height:22px; border-radius:3px; object-fit:cover; flex-shrink:0;'
-        });
-        miniThumb.addEventListener('error', () => { miniThumb.style.display = 'none'; });
-        const titleLink = Object.assign(document.createElement('span'), {
-          textContent: titleText, title: 'Open on YouTube',
-          style: 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; color:rgba(255,255,255,0.9);'
-        });
-        titleLink.addEventListener('click', () => window.open(`https://youtu.be/${vid}`, '_blank'));
-        const cnt = Object.assign(document.createElement('span'), {
-          textContent: a0.marks.length,
-          style: 'font:600 10px ui-monospace,monospace; color:#f5b53d; background:rgba(245,181,61,0.12); border:1px solid rgba(245,181,61,0.3); border-radius:4px; padding:0 5px;'
-        });
-        const marks = a0.marks.slice().sort((x, y) => x.s - y.s);
-        const focused = bookmarkFocusVid === vid;
-        const expanded = focused || !!bookmarkGroupExpanded[vid];
-
-        const toggleBtn = mkActionBtn('strip', (expanded ? '▼ ' : '▶ ') + (expanded ? 'Hide' : 'Show'), expanded ? 'Collapse this video' : 'Expand this video');
-        toggleBtn.style.marginLeft = 'auto';
-        const chapBtn = mkActionBtn('strip', 'Copy as chapters', 'Copy timestamped lines to clipboard');
-        chapBtn.addEventListener('click', () => {
-          const text = marks.map(m => `${formatClock(m.s)} ${m.label || 'Untitled mark'}`).join('\n');
-          navigator.clipboard.writeText(text).then(() => flashBtnState(chapBtn, 'success')).catch(() => flashBtnState(chapBtn, 'error'));
-        });
-        const delAllBtn = mkActionBtn('strip', 'Delete all', 'Delete every note for this video', 'rgba(255,80,80,0.7)');
-        delAllBtn.style.borderColor = 'rgba(255,80,80,0.2)';
-        delAllBtn.addEventListener('mouseenter', () => { delAllBtn.style.background = 'rgba(255,50,50,0.15)'; delAllBtn.style.color = '#ff5555'; });
-        delAllBtn.addEventListener('mouseleave', () => { delAllBtn.style.background = 'rgba(255,255,255,0.07)'; delAllBtn.style.color = 'rgba(255,80,80,0.7)'; });
-        delAllBtn.addEventListener('click', () => {
-          if (delAllBtn.dataset.confirm !== '1') {
-            delAllBtn.dataset.confirm = '1';
-            delAllBtn.textContent = 'Confirm?';
-            setTimeout(() => { if (delAllBtn.isConnected) { delAllBtn.dataset.confirm = '0'; delAllBtn.textContent = 'Delete all'; } }, 3000);
-            return;
-          }
-          delete currentSettings.annotationsCache[vid];
-          delete bookmarkGroupExpanded[vid];
-          persistAnnot(vid);
-          renderHistoryTab();
-        });
-        if (focused) {
-          chapBtn.style.marginLeft = 'auto';
-          head.append(miniThumb, titleLink, cnt, chapBtn, delAllBtn);
-        } else {
-          head.append(miniThumb, titleLink, cnt, toggleBtn, chapBtn, delAllBtn);
-        }
-        grp.append(head);
-
-        titleLink.style.cursor = 'pointer';
-        const setExpanded = (v) => {
-          bookmarkGroupExpanded[vid] = v;
-          rerender();
-        };
-        if (!focused) {
-          head.style.cursor = 'pointer';
-          toggleBtn.addEventListener('click', (e) => { e.stopPropagation(); setExpanded(!expanded); });
-          head.addEventListener('click', (e) => {
-            if (e.target === head || e.target === miniThumb || e.target === cnt) setExpanded(!expanded);
-          });
-        } else {
-          head.style.cursor = 'default';
-        }
-
-        if (!expanded) return grp;
-
-        marks.forEach((mk) => {
-          const row = Object.assign(document.createElement('div'), {
-            className: 'ytee-bkmk-row',
-            style: 'display:grid; grid-template-columns:auto 1fr auto auto; gap:10px; align-items:center; padding:5px 8px; border-radius:6px; font-size:12px;'
-          });
-          const ts = Object.assign(document.createElement('span'), {
-            textContent: formatClock(mk.s), title: 'Open at this time',
-            style: 'font:500 11px ui-monospace,monospace; color:#f5b53d; cursor:pointer;'
-          });
-          ts.addEventListener('click', () => window.open(`https://youtu.be/${vid}?t=${mk.s}`, '_blank'));
-          const lbl = Object.assign(document.createElement('span'), {
-            textContent: mk.label || 'Untitled mark', title: 'Click to rename',
-            style: `overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; ${mk.label ? 'color:rgba(255,255,255,0.85);' : 'color:rgba(255,255,255,0.4); font-style:italic;'}`
-          });
-          lbl.addEventListener('click', () => {
-            const inp = Object.assign(document.createElement('input'), {
-              value: mk.label, maxLength: ANNOT_LABEL_MAX,
-              style: 'font:inherit; width:100%; background:rgba(255,255,255,0.1); border:1px solid #f5b53d; border-radius:4px; color:#fff; padding:2px 5px;'
-            });
-            lbl.replaceWith(inp); inp.focus(); inp.select();
-            const commit = () => { mk.label = inp.value.trim().slice(0, ANNOT_LABEL_MAX); persistAnnot(vid); rerender(); };
-            inp.addEventListener('blur', commit);
-            inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } else if (e.key === 'Escape') rerender(); });
-          });
-          const copyMk = Object.assign(document.createElement('button'), { textContent: '🔗', title: 'Copy link at this time', style: 'background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.45); font-size:11px; padding:2px 3px;' });
-          copyMk.addEventListener('click', () => { navigator.clipboard.writeText(`https://youtu.be/${vid}?t=${mk.s}`).then(() => flashBtnState(copyMk, 'success')).catch(() => { }); });
-          const delMk = Object.assign(document.createElement('button'), { textContent: '✕', title: 'Delete note', style: 'background:none; border:none; cursor:pointer; color:rgba(255,255,255,0.4); font-size:11px; padding:2px 3px;' });
-          delMk.addEventListener('click', () => {
-            const cur = ensureAnnot(vid);
-            cur.marks = cur.marks.filter(m => m !== mk);
-            persistAnnot(vid);
-            if (cur.marks.length === 0) renderHistoryTab();
-            else rerender();
-          });
-          row.append(ts, lbl, copyMk, delMk);
-          grp.append(row);
-        });
-        return grp;
-      };
-
-      const renderBookmarksView = () => {
-        if (bookmarkFocusVid && bookmarkCount(bookmarkFocusVid) === 0) bookmarkFocusVid = null;
-        if (bookmarkFocusVid) {
-          const backBtn = mkActionBtn('strip', '← All notes', 'Show notes for every video');
-          backBtn.style.marginBottom = '10px';
-          backBtn.addEventListener('click', () => { bookmarkFocusVid = null; renderHistoryTab(); });
-          h.append(backBtn);
-          bookmarkGroupExpanded[bookmarkFocusVid] = true;
-          const g = buildBookmarkGroup(bookmarkFocusVid);
-          if (g) h.append(g);
-          return;
-        }
-        const withMarks = allVids.filter(vid => bookmarkCount(vid) > 0);
-        if (withMarks.length === 0) {
-          h.append(mkNote('No notes yet — press 🔖 (or the Add Note hotkey) while watching to drop one.'));
-          return;
-        }
-        const anyExpanded = withMarks.some(vid => bookmarkGroupExpanded[vid]);
-        const bulkBtn = mkActionBtn('strip', anyExpanded ? 'Collapse all' : 'Expand all', 'Toggle every video group');
-        bulkBtn.style.marginBottom = '10px';
-        bulkBtn.addEventListener('click', () => {
-          withMarks.forEach(vid => { bookmarkGroupExpanded[vid] = !anyExpanded; });
-          renderHistoryTab();
-        });
-        h.append(bulkBtn);
-        withMarks.forEach(vid => {
-          const g = buildBookmarkGroup(vid);
-          if (g) h.append(g);
-        });
-      };
-
-      if (historyBookmarkView) { renderBookmarksView(); return; }
-
-      let currentGridContainer = null;
-      const flushGridContainer = () => {
-        if (currentGridContainer && currentGridContainer.children.length > 0) {
-          h.append(currentGridContainer);
-          currentGridContainer = null;
-        }
-      };
-      const getGridContainer = () => {
-        if (!currentGridContainer) {
-          currentGridContainer = Object.assign(document.createElement('div'), {
-            style: 'display:grid; grid-template-columns:repeat(auto-fill,minmax(clamp(150px,calc(var(--ytee-ew)*0.22),220px),1fr)); gap:10px; margin-bottom:8px;'
-          });
-        }
-        return currentGridContainer;
-      };
-
-      const buildCard = (vid) => {
-        const cardRef = { el: null };
-        let titleText = "";
-        const volObj = currentSettings.volumeCache[vid];
-        const posObj = currentSettings.positionCache[vid];
-        const msObj = currentSettings.miniStatsCache[vid];
-        const favObj = currentSettings.favoritesCache[vid];
-        const annObj = currentSettings.annotationsCache[vid];
-
-        if (volObj && typeof volObj === 'object' && volObj.title) titleText = volObj.title;
-        else if (posObj && typeof posObj === 'object' && posObj.title) titleText = posObj.title;
-        else if (msObj && typeof msObj === 'object' && msObj.title) titleText = msObj.title;
-        else if (favObj && typeof favObj === 'object' && favObj.title) titleText = favObj.title;
-        else if (annObj && annObj.title) titleText = annObj.title;
-        if (!titleText) titleText = vid;
-
-        let channelText = "";
-        if (volObj && typeof volObj === 'object' && volObj.channel) channelText = volObj.channel;
-        else if (posObj && typeof posObj === 'object' && posObj.channel) channelText = posObj.channel;
-        else if (msObj && typeof msObj === 'object' && msObj.channel) channelText = msObj.channel;
-        else if (favObj && typeof favObj === 'object' && favObj.channel) channelText = favObj.channel;
-        else if (annObj && annObj.channel) channelText = annObj.channel;
-
-        const savedParts = [];
-        if (volObj !== undefined) {
-          const volVal = typeof volObj === 'object' ? volObj.v : volObj;
-          savedParts.push(`Volume: ${Math.round(volVal * 100)}%`);
-        }
-        if (posObj !== undefined) {
-          const posVal = typeof posObj === 'object' ? posObj.v : posObj;
-          const totalSecs = Math.floor(posVal);
-          const h = Math.floor(totalSecs / 3600);
-          const m = Math.floor((totalSecs % 3600) / 60);
-          const s = totalSecs % 60;
-          const posStr = h > 0
-            ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-            : `${m}:${s.toString().padStart(2, '0')}`;
-          savedParts.push(`Position: ${posStr}`);
-        }
-        if (msObj !== undefined) {
-          const msVal = typeof msObj === 'object' ? msObj.v : msObj;
-          if (msVal) savedParts.push(`Mini Stats: Active`);
-        }
-        const descText = savedParts.join(' | ');
-
-        const dlThumbHistBtn = mkHistBtn('\u2B07 Thumb', 'Download thumbnail (best available quality)');
-        dlThumbHistBtn.addEventListener('click', () => {
-          const thumbQualities = ['maxresdefault.jpg', 'hqdefault.jpg', 'mqdefault.jpg'];
-          const tryThumb = (idx) => {
-            if (idx >= thumbQualities.length) { flashBtnState(dlThumbHistBtn, 'error'); return; }
-            const url = `https://img.youtube.com/vi/${vid}/${thumbQualities[idx]}`;
-            GM_xmlhttpRequest({
-              method: 'HEAD', url,
-              onload: (r) => {
-                if (r.status === 200) { downloadUrlAsFile(url, `${titleText}_thumbnail`); flashBtnState(dlThumbHistBtn, 'success'); }
-                else { tryThumb(idx + 1); }
-              },
-              onerror: () => tryThumb(idx + 1)
-            });
-          };
-          tryThumb(0);
-        });
-
-        const dlPfpHistBtn = mkHistBtn('\u2B07 PFP', 'Download channel avatar');
-        dlPfpHistBtn.addEventListener('click', () => {
-          dlPfpHistBtn.textContent = '\u2026';
-          const fallbackToYouTube = (vId) => {
-            GM_xmlhttpRequest({
-              method: 'GET', url: `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vId}&format=json`,
-              onload: (r) => {
-                if (r.status !== 200) { flashBtnState(dlPfpHistBtn, 'error'); dlPfpHistBtn.textContent = '\u2B07 PFP'; return; }
-                try {
-                  const json = JSON.parse(r.responseText);
-                  const authorName = json.author_name || titleText;
-                  const channelUrl = json.author_url;
-                  GM_xmlhttpRequest({
-                    method: 'GET', url: channelUrl,
-                    onload: (cr) => {
-                      try {
-                        const match = cr.responseText.match(/"avatar":\{"thumbnails":\[{"url":"([^"]+)"/);
-                        const ogMatch = cr.responseText.match(/<meta property="og:image" content="([^"]+)"/);
-                        const photoUrl = match?.[1] || ogMatch?.[1];
-                        if (photoUrl) {
-                          const cleanUrl = photoUrl.replace(/=s\d+-c-k-c0x[0-9a-f]+-no-rj/, '=s0').replace(/\\u0026/g, '&');
-                          downloadUrlAsFile(cleanUrl, `${authorName}_avatar`);
-                          flashBtnState(dlPfpHistBtn, 'success');
-                        } else { throw new Error('No avatar found'); }
-                      } catch (e) { flashBtnState(dlPfpHistBtn, 'error'); }
-                      dlPfpHistBtn.textContent = '\u2B07 PFP';
-                    },
-                    onerror: () => { flashBtnState(dlPfpHistBtn, 'error'); dlPfpHistBtn.textContent = '\u2B07 PFP'; }
-                  });
-                } catch (e) { flashBtnState(dlPfpHistBtn, 'error'); dlPfpHistBtn.textContent = '\u2B07 PFP'; }
-              },
-              onerror: () => { flashBtnState(dlPfpHistBtn, 'error'); dlPfpHistBtn.textContent = '\u2B07 PFP'; }
-            });
-          };
-          GM_xmlhttpRequest({
-            method: 'GET', url: `https://holodex.net/api/v2/videos/${vid}?include=live_info`,
-            headers: { "Referer": "https://holodex.net/", "Origin": "https://holodex.net" },
-            onload: (r) => {
-              if (r.status === 200) {
-                try {
-                  const json = JSON.parse(r.responseText);
-                  const photo = json.channel?.photo;
-                  if (photo) {
-                    const author = json.channel.name || titleText;
-                    downloadUrlAsFile(photo.replace(/=s\d+-c-k-c0x[0-9a-f]+-no-rj/, '=s0'), `${author}_avatar`);
-                    flashBtnState(dlPfpHistBtn, 'success');
-                    dlPfpHistBtn.textContent = '\u2B07 PFP';
-                    return;
-                  }
-                } catch (e) { }
-              }
-              fallbackToYouTube(vid);
-            },
-            onerror: () => fallbackToYouTube(vid)
-          });
-        });
-
-        const copyLinkBtn = mkHistBtn('\uD83D\uDD17', 'Copy link  \u2022  Ctrl+click to copy with timestamp');
-        copyLinkBtn.addEventListener('click', (e) => {
-          const baseUrl = `https://youtu.be/${vid}`;
-          if (e.ctrlKey) {
-            const posVal = posObj && typeof posObj === 'object' ? posObj.v : (posObj || 0);
-            if (!posVal || posVal <= 0) {
-              const origTitle = copyLinkBtn.title;
-              copyLinkBtn.title = '\u26A0 No timestamp saved for this video';
-              flashBtnState(copyLinkBtn, 'error');
-              setTimeout(() => { copyLinkBtn.title = origTitle; }, 2500);
-              return;
-            }
-            navigator.clipboard.writeText(`${baseUrl}?t=${Math.floor(posVal)}`)
-              .then(() => flashBtnState(copyLinkBtn, 'success'))
-              .catch(() => flashBtnState(copyLinkBtn, 'error'));
-          } else {
-            navigator.clipboard.writeText(baseUrl)
-              .then(() => flashBtnState(copyLinkBtn, 'success'))
-              .catch(() => flashBtnState(copyLinkBtn, 'error'));
-          }
-        });
-
-        const deleteBtn = mkHistBtn('Delete', 'Delete from history', '#ff5555');
-        deleteBtn.style.background = 'rgba(255,0,0,0.2)';
-        deleteBtn.style.borderColor = 'rgba(255,0,0,0.4)';
-        deleteBtn.addEventListener('click', () => {
-          delete currentSettings.volumeCache[vid];
-          delete currentSettings.positionCache[vid];
-          delete currentSettings.miniStatsCache[vid];
-          delete currentSettings.favoritesCache[vid];
-          delete currentSettings.annotationsCache[vid];
-          saveStoredSettings(currentSettings, { immediate: true });
-          if (cardRef.el && cardRef.el.isConnected) cardRef.el.remove();
-          else renderHistoryTab();
-        });
-
-        const favActive = isFavorited(vid);
-        const gridMode = historyViewMode === 'grid';
-        const starBtn = Object.assign(document.createElement('button'), {
-          textContent: favActive ? '★' : '☆',
-          title: favActive ? 'Remove from favorites' : 'Add to favorites',
-        });
-        starBtn.style.cssText = `position:absolute; top:${gridMode ? 6 : 2}px; right:${gridMode ? 6 : 2}px; width:${gridMode ? 24 : 16}px; height:${gridMode ? 24 : 16}px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:${favActive ? 'rgba(40,32,0,0.85)' : 'rgba(10,10,10,0.65)'}; border:1px solid ${favActive ? 'var(--ytee-stats-border)' : 'rgba(255,255,255,0.2)'}; color:${favActive ? 'var(--ytee-stats-color)' : 'rgba(255,255,255,0.6)'}; font-size:${gridMode ? 13 : 10}px; line-height:1; cursor:pointer; z-index:3; padding:0; transition:transform 0.12s, background 0.12s, color 0.12s, border-color 0.12s;`;
-        starBtn.addEventListener('mouseenter', () => { starBtn.style.transform = 'scale(1.15)'; });
-        starBtn.addEventListener('mouseleave', () => { starBtn.style.transform = ''; });
-        starBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const nowFav = !favActive;
-          if (favActive) {
-            delete currentSettings.favoritesCache[vid];
-          } else {
-            currentSettings.favoritesCache[vid] = { v: true, title: titleText, channel: channelText, t: Date.now() };
-          }
-          saveStoredSettings(currentSettings, { immediate: true });
-          if (cardRef.el && cardRef.el.isConnected) {
-            if (historyFavOnly && !nowFav) cardRef.el.remove();
-            else cardRef.el.replaceWith(buildCard(vid));
-          } else {
-            renderHistoryTab();
-          }
-        });
-
-        const holodexBtn = mkHistBtn('Open Holodex', 'Open in Holodex', '#7ddf7d');
-        holodexBtn.addEventListener('click', () => { window.open(`https://holodex.net/multiview/AAYY${vid}`, '_blank'); flashBtnState(holodexBtn, 'success'); });
-
-        const buildThumb = (w, h) => {
-          const primary = w > 120 ? 'hqdefault.jpg' : 'mqdefault.jpg';
-          const t = Object.assign(document.createElement('img'), { src: `https://img.youtube.com/vi/${vid}/${primary}`, alt: titleText, width: w, height: h, loading: 'lazy' });
-          t.style.cssText = `border-radius:6px; object-fit:cover; flex-shrink:0; width:${w}px; height:${h}px;`;
-          let tried = primary === 'mqdefault.jpg';
-          t.addEventListener('error', () => {
-            if (!tried) { tried = true; t.src = `https://img.youtube.com/vi/${vid}/mqdefault.jpg`; }
-            else t.style.display = 'none';
-          });
-          return t;
-        };
-
-        if (historyViewMode === 'grid') {
-          const overlay = Object.assign(document.createElement('div'), {
-            className: 'ytee-hist-overlay',
-            style: 'position:absolute; top:0; left:0; right:0; height:clamp(72px,calc(var(--ytee-ew)*0.115),120px); background:linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.55) 100%); display:flex; align-items:center; justify-content:center; gap:6px; z-index:2; border-radius:0;'
-          });
-          const card = Object.assign(document.createElement('div'), {
-            className: 'ytee-hist-card',
-            style: 'background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; position:relative; transition:border-color 0.18s, box-shadow 0.18s;'
-          });
-          card.dataset.yteeVid = vid;
-
-          // Thumbnail 2
-          const cardThumb = buildThumb(160, 90);
-          cardThumb.style.cssText = 'width:100%; height:clamp(72px,calc(var(--ytee-ew)*0.115),120px); object-fit:cover; border-radius:0; flex-shrink:0;';
-
-          const mkOvBtn = (label, title, color) => mkActionBtn('overlay', label, title, color);
-          const ovThumb = mkOvBtn('\u2B07', 'Download thumbnail');
-          ovThumb.addEventListener('click', (e) => { e.stopPropagation(); dlThumbHistBtn.click(); });
-          const ovPfp = mkOvBtn('\u{1F464}', 'Download PFP');
-          ovPfp.addEventListener('click', (e) => { e.stopPropagation(); dlPfpHistBtn.click(); });
-          const ovLink = mkOvBtn('\uD83D\uDD17', 'Copy link \u2022 Ctrl+click for timestamp');
-          ovLink.addEventListener('click', (e) => { e.stopPropagation(); copyLinkBtn.dispatchEvent(new MouseEvent('click', { ctrlKey: e.ctrlKey, bubbles: true })); });
-          const ovHolo = mkOvBtn('Holodex', 'Open in Holodex', '#7ddf7d');
-          ovHolo.addEventListener('click', (e) => { e.stopPropagation(); holodexBtn.click(); });
-          overlay.append(ovThumb, ovPfp, ovLink, ovHolo);
-
-          const cardBody = Object.assign(document.createElement('div'), {
-            style: 'padding:9px 10px 7px; flex:1; display:flex; flex-direction:column; gap:3px; min-width:0;'
-          });
-          const cardTitle = Object.assign(document.createElement('div'), {
-            className: 'ytee-hist-link',
-            textContent: titleText, title: 'Open on YouTube',
-            style: 'font-size:11.5px; color:rgba(255,255,255,0.9); font-weight:600; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; transition:color 0.12s;'
-          });
-          cardTitle.addEventListener('click', () => window.open(`https://youtu.be/${vid}`, '_blank'));
-
-          const cardChannel = channelText
-            ? Object.assign(document.createElement('div'), {
-              className: 'ytee-hist-sublink',
-              textContent: channelText, title: 'Open YouTube channel',
-              style: 'font-size:10px; color:rgba(255,255,255,0.38); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:color 0.12s;'
-            })
-            : null;
-          if (cardChannel) {
-            cardChannel.addEventListener('click', () => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(channelText)}`, '_blank'));
-          }
-
-          const cardMeta = Object.assign(document.createElement('div'), {
-            textContent: descText,
-            style: 'font-size:9.5px; color:rgba(255,255,255,0.28); line-height:1.4; margin-top:2px;'
-          });
-
-          // Delete
-          const cardDel = Object.assign(document.createElement('button'), {
-            textContent: 'Delete', title: 'Delete from history',
-            style: 'align-self:flex-end; margin-top:auto; padding:3px 7px; font-size:9.5px; background:transparent; color:rgba(255,80,80,0.45); border:1px solid rgba(255,80,80,0.2); border-radius:4px; cursor:pointer; transition:all 0.15s;'
-          });
-          cardDel.addEventListener('mouseenter', () => { cardDel.style.background = 'rgba(255,50,50,0.12)'; cardDel.style.color = '#ff5555'; cardDel.style.borderColor = 'rgba(255,80,80,0.5)'; });
-          cardDel.addEventListener('mouseleave', () => { cardDel.style.background = 'transparent'; cardDel.style.color = 'rgba(255,80,80,0.45)'; cardDel.style.borderColor = 'rgba(255,80,80,0.2)'; });
-          cardDel.addEventListener('click', () => deleteBtn.click());
-
-          const gridBadge = mkBookmarkBadge(vid);
-          if (gridBadge) {
-            gridBadge.style.cssText += ' align-self:flex-start; margin-top:4px;';
-            cardBody.append(cardTitle, ...(cardChannel ? [cardChannel] : []), cardMeta, gridBadge, cardDel);
-          } else {
-            cardBody.append(cardTitle, ...(cardChannel ? [cardChannel] : []), cardMeta, cardDel);
-          }
-          card.append(cardThumb, overlay, starBtn, cardBody);
-          cardRef.el = card;
-          return card;
-        } else {
-          // List view
-          const listRow = Object.assign(document.createElement('div'), {
-            className: 'ytee-hist-list',
-            style: 'display:flex; align-items:center; gap:12px; padding:8px 10px; margin-bottom:6px; border-radius:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); position:relative; transition:background 0.15s, border-color 0.15s; overflow:hidden;'
-          });
-          listRow.dataset.yteeVid = vid;
-
-          // Thumbnail 3
-          const thumb = buildThumb(80, 45);
-          Object.assign(thumb.style, { borderRadius: '6px', width: '100%', height: '100%', display: 'block' });
-          const thumbWrap = Object.assign(document.createElement('div'), { style: 'position:relative; flex-shrink:0; width:80px; height:45px;' });
-          thumbWrap.append(thumb, starBtn);
-
-          const textBlock = Object.assign(document.createElement('div'), { style: 'flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;' });
-          const titleSpan = Object.assign(document.createElement('span'), {
-            className: 'ytee-hist-link',
-            textContent: titleText, title: 'Open on YouTube',
-            style: 'font-size:12px; font-weight:600; color:rgba(255,255,255,0.9); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; display:block; transition:color 0.12s;'
-          });
-          titleSpan.addEventListener('click', () => window.open(`https://youtu.be/${vid}`, '_blank'));
-          textBlock.appendChild(titleSpan);
-
-          if (channelText) {
-            const channelSpan = Object.assign(document.createElement('span'), {
-              className: 'ytee-hist-sublink',
-              textContent: channelText, title: 'Open YouTube channel',
-              style: 'font-size:10px; color:rgba(255,255,255,0.38); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; transition:color 0.12s;'
-            });
-            channelSpan.addEventListener('click', () => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(channelText)}`, '_blank'));
-            textBlock.appendChild(channelSpan);
-          }
-
-          const metaSpan = Object.assign(document.createElement('span'), {
-            style: 'font-size:9.5px; color:rgba(255,255,255,0.25); margin-top:1px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;'
-          });
-          if (descText) metaSpan.append(document.createTextNode(descText));
-          const badge = mkBookmarkBadge(vid);
-          if (badge) metaSpan.append(badge);
-          textBlock.appendChild(metaSpan);
-
-          // Actionstrip
-          const actionStrip = Object.assign(document.createElement('div'), {
-            className: 'ytee-hist-actions',
-            style: 'display:flex; gap:5px; align-items:center; flex-shrink:0;'
-          });
-          const mkListAction = (label, title, color) => mkActionBtn('strip', label, title, color);
-          const laThumb = mkListAction('\u2B07 Thumb', 'Download thumbnail');
-          laThumb.addEventListener('click', () => dlThumbHistBtn.click());
-          const laPfp = mkListAction('\u2B07 PFP', 'Download PFP');
-          laPfp.addEventListener('click', () => dlPfpHistBtn.click());
-          const laLink = mkListAction('\uD83D\uDD17', 'Copy link \u2022 Ctrl+click for timestamp');
-          laLink.addEventListener('click', (e) => copyLinkBtn.dispatchEvent(new MouseEvent('click', { ctrlKey: e.ctrlKey, bubbles: true })));
-          const laHolo = mkListAction('Holodex', 'Open in Holodex', '#7ddf7d');
-          laHolo.addEventListener('click', () => holodexBtn.click());
-          const laDel = mkListAction('Delete', 'Delete from history', 'rgba(255,80,80,0.7)');
-          laDel.style.borderColor = 'rgba(255,80,80,0.2)';
-          laDel.addEventListener('mouseenter', () => { laDel.style.background = 'rgba(255,50,50,0.15)'; laDel.style.color = '#ff5555'; });
-          laDel.addEventListener('mouseleave', () => { laDel.style.background = 'rgba(255,255,255,0.07)'; laDel.style.color = 'rgba(255,80,80,0.7)'; });
-          laDel.addEventListener('click', () => deleteBtn.click());
-          actionStrip.append(laThumb, laPfp, laLink, laHolo, laDel);
-
-          listRow.append(thumbWrap, textBlock, actionStrip);
-          cardRef.el = listRow;
-          return listRow;
-        }
-      };
-
-      let visibleVids = historyFavOnly ? allVids.filter(isFavorited) : allVids;
-
-      if (visibleVids.length === 0 && historyFavOnly) {
-        h.append(mkNote('No favorites yet — click the ☆ on any video to pin it here.'));
-      }
-
-      const footerRow = Object.assign(document.createElement('div'), { style: 'display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:14px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);' });
-      const footerImportBtn = Object.assign(document.createElement('button'), { textContent: 'Import History', title: 'Import history from a JSON file', style: 'padding:5px 12px; font-size:11px; background:rgba(255,255,255,0.07); color:rgba(255,255,255,0.7); border:1px solid rgba(255,255,255,0.15); border-radius:5px; cursor:pointer;' });
-      const footerExportBtn = Object.assign(document.createElement('button'), { textContent: 'Export History', title: 'Export history as a JSON file', style: 'padding:5px 12px; font-size:11px; background:rgba(255,255,255,0.07); color:rgba(255,255,255,0.7); border:1px solid rgba(255,255,255,0.15); border-radius:5px; cursor:pointer;' });
-      footerImportBtn.addEventListener('click', () => importInput.click());
-      footerExportBtn.addEventListener('click', () => {
-        try {
-          const data = { ytee_history_export: true, volumeCache: currentSettings.volumeCache, positionCache: currentSettings.positionCache, miniStatsCache: currentSettings.miniStatsCache, favoritesCache: currentSettings.favoritesCache, annotationsCache: currentSettings.annotationsCache };
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = Object.assign(document.createElement('a'), { href: url, download: `ytee-history-${new Date().toISOString().slice(0, 10)}.json` });
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          flashBtnState(footerExportBtn, 'success');
-        } catch (e) { flashBtnState(footerExportBtn, 'error'); }
-      });
-      footerRow.append(footerImportBtn, footerExportBtn);
-
-      let renderIdx = 0;
-      const RENDER_BATCH = 18;
-      const renderChunk = () => {
-        historyRenderRaf = 0;
-        const isGrid = historyViewMode === 'grid';
-        const frag = isGrid ? null : document.createDocumentFragment();
-        const end = Math.min(renderIdx + RENDER_BATCH, visibleVids.length);
-        for (; renderIdx < end; renderIdx++) {
-          const vid = visibleVids[renderIdx];
-          const ts = tsByVid.get(vid) || 0;
-          const dateLabel = ts ? getDateLabel(ts) : null;
-          if (dateLabel && dateLabel !== lastDateLabel) {
-            if (isGrid) { flushGridContainer(); h.append(mkDateSeparator(dateLabel)); }
-            else frag.append(mkDateSeparator(dateLabel));
-            lastDateLabel = dateLabel;
-          }
-          const el = buildCard(vid);
-          if (isGrid) getGridContainer().append(el);
-          else frag.append(el);
-        }
-        if (!isGrid) h.append(frag);
-        if (renderIdx < visibleVids.length) {
-          historyRenderRaf = requestAnimationFrame(renderChunk);
-        } else {
-          if (isGrid) flushGridContainer();
-          h.append(footerRow);
-        }
-      };
-      renderChunk();
-    };
+    const { renderHistoryTab, scheduleHistoryRender, disposeHistoryTab } = createHistoryTab({
+      getSettings: () => currentSettings,
+      getSettingsModal: () => settingsModal,
+      isHistoryTabActive, tabContents, ensureAnnot, persistAnnot,
+      mkSection, mkNote, mkActionBtn, syncGist,
+      setHistoryTabDirty: (v) => { historyTabDirty = v; },
+      getHistoryViewMode: () => historyViewMode,
+      setHistoryViewMode: (v) => { historyViewMode = v; },
+    });
 
     let settingsDomBuilt = false;
     const showSettingsModal = () => {
@@ -2826,6 +1446,7 @@ if (window.self === window.top) {
         ui.append(mkSection('Appearance'));
         ui.append(mkRow('Compact icon mode', 'Smaller icons', mkToggle('ytee-compact-mode', false)));
         ui.append(mkRow('High contrast UI', 'Make buttons and text stand out more', mkToggle('ytee-high-contrast', false)));
+        ui.append(mkRow('Blur effects', 'Frosted-glass blur behind the settings panel and history overlays.', mkToggle('ytee-enable-blur', true)));
         ui.append(mkRow('Persistent Mini Stats', 'Show Mini Stats on every video', mkToggle('ytee-always-show-mini-stats', false)));
         ui.append(mkSection('Button Visibility'));
         const grid = Object.assign(document.createElement('div'), { className: 'ytee-grid-2' });
@@ -2836,6 +1457,10 @@ if (window.self === window.top) {
         // Hotkey tab
         const hk = tabContents['tab-hotkeys'];
         hk.append(mkSection('Key Bindings'));
+        hk.append(Object.assign(document.createElement('div'), {
+          id: 'ytee-hk-conflict-warn', className: 'setting-note',
+          style: 'display:none; color:#f5b53d;'
+        }));
         const hotkeyNames = {
           toggleMute: ['Toggle Mute', 'Mute/unmute player'],
           toggleStats: ['Toggle Stats', 'Show/Hide Stats for Nerds'],
@@ -2850,11 +1475,42 @@ if (window.self === window.top) {
           toggleFullscreen: ['Toggle Fullscreen', 'Enter/exit fullscreen'],
           cycleSleepTimer: ['Sleep Timer', 'Cycle off / 15m / 30m / 45m / 1h / 1.5h / 2h / 3h / 4h / end'],
           addBookmark: ['Add Note', 'Drop a note at the current time'],
+          screenshot: ['Screenshot', 'Snap the current frame'],
+          clip: ['Clip', 'Start / stop a clip recording'],
+          replay: ['Instant Replay', 'Start buffering / save the replay'],
+          pip: ['Picture-in-Picture', 'Toggle PiP'],
+          copyUrl: ['Copy URL', 'Copy the video link'],
+          watchLater: ['Watch Later', 'Add to YouTube Watch Later'],
+          toggleCollapse: ['Collapse UI', 'Hide / show the toolbar'],
+        };
+
+        const mkHotkeyField = (key) => {
+          const wrap = Object.assign(document.createElement('div'), { className: 'ytee-hk-field' });
+          const input = Object.assign(document.createElement('input'), {
+            type: 'text', id: `hk-${key}`, className: 'hk-input', readOnly: true,
+            placeholder: 'click to set', spellcheck: false,
+          });
+          const clearBtn = Object.assign(document.createElement('button'), {
+            type: 'button', className: 'ytee-hk-clear', textContent: '×', title: 'Clear', tabIndex: -1,
+          });
+          const finish = (val) => { input.value = val; input.blur(); refreshHkConflicts(); };
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') return; // let focus move on
+            e.preventDefault(); e.stopPropagation();
+            if (e.key === 'Escape') { input.blur(); return; }
+            if (e.key === 'Backspace' || e.key === 'Delete') { finish(''); return; }
+            if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return; // wait for a real key
+            const combo = [e.altKey ? 'alt+' : '', e.ctrlKey ? 'ctrl+' : '', e.shiftKey ? 'shift+' : '', hkKeyName(e.key)].join('');
+            finish(sanitizeHotkeyInput(combo));
+          });
+          input.addEventListener('focus', () => { input.classList.add('ytee-hk-capturing'); input.placeholder = 'press keys…'; });
+          input.addEventListener('blur', () => { input.classList.remove('ytee-hk-capturing'); input.placeholder = 'click to set'; });
+          clearBtn.addEventListener('click', () => finish(''));
+          wrap.append(input, clearBtn);
+          return wrap;
         };
         Object.keys(hotkeyNames).forEach(key => {
-          const input = Object.assign(document.createElement('input'), { type: 'text', id: `hk-${key}`, className: 'hk-input' });
-          input.addEventListener('blur', () => { input.value = sanitizeHotkeyInput(input.value); });
-          hk.append(mkRow(hotkeyNames[key][0], hotkeyNames[key][1], input));
+          hk.append(mkRow(hotkeyNames[key][0], hotkeyNames[key][1], mkHotkeyField(key)));
         });
 
         settingsDomBuilt = true;
@@ -2897,8 +1553,10 @@ if (window.self === window.top) {
       setVal('ytee-sleep-reset', currentSettings.sleepTimerReset);
       setCb('ytee-sleep-fade', currentSettings.sleepTimerFadeOut);
       Object.keys(currentSettings.hotkeys).forEach(key => setVal(`hk-${key}`, currentSettings.hotkeys[key]));
+      refreshHkConflicts();
       setCb('ytee-compact-mode', currentSettings.compactMode);
       setCb('ytee-high-contrast', currentSettings.highContrastUI);
+      setCb('ytee-enable-blur', currentSettings.enableBlur !== false);
       setCb('ytee-always-show-mini-stats', currentSettings.alwaysShowMiniStats);
       setCb('ytee-enable-gist-sync', currentSettings.enableGistSync);
       const gistTokEl = document.getElementById('ytee-gist-token');
@@ -2919,6 +1577,7 @@ if (window.self === window.top) {
 
     const hideSettingsModal = () => {
       if (document.fullscreenElement === settingsModal) document.exitFullscreen().catch(() => { });
+      document.getElementById('ytee-cleardata-overlay')?.classList.remove('show');
       settingsModal.classList.remove('show');
       isSettingsOpen = false;
     };
@@ -2949,6 +1608,31 @@ if (window.self === window.top) {
       '!': '1', '@': '2', '#': '3', '$': '4', '%': '5', '^': '6', '&': '7', '*': '8', '(': '9', ')': '0',
       '~': '`', '_': '-', '+': '=', '{': '[', '}': ']', '|': '\\', ':': ';', '"': "'", '<': ',', '>': '.', '?': '/'
     };
+
+    const hkKeyName = (k) => (k === ' ' || k === 'Spacebar') ? 'space' : k.toLowerCase();
+
+    function refreshHkConflicts() {
+      const fields = [...document.querySelectorAll('#custom-settings-content .ytee-hk-field input')];
+      const byCombo = {};
+      fields.forEach(f => {
+        f.classList.remove('ytee-hk-dupe');
+        const v = sanitizeHotkeyInput(f.value);
+        if (v) (byCombo[v] = byCombo[v] || []).push(f);
+      });
+      const msgs = [];
+      Object.keys(byCombo).forEach(v => {
+        if (byCombo[v].length < 2) return;
+        byCombo[v].forEach(f => f.classList.add('ytee-hk-dupe'));
+        const names = byCombo[v].map(f => f.closest('.setting-item')?.querySelector('.setting-title')?.textContent || '?');
+        msgs.push(`"${v}" — ${names.join(' & ')}`);
+      });
+      const warn = document.getElementById('ytee-hk-conflict-warn');
+      if (warn) {
+        warn.textContent = msgs.length ? '⚠ Same key bound twice: ' + msgs.join('  •  ') : '';
+        warn.style.display = msgs.length ? '' : 'none';
+      }
+      return msgs.length > 0;
+    }
 
     const sanitizeHotkeyInput = (value) => {
       if (!value || typeof value !== 'string') return '';
@@ -3269,16 +1953,22 @@ if (window.self === window.top) {
     buildHotkeyMap();
 
     const onKeyDown = (e) => {
+      const ae = document.activeElement;
+      if (ae && ae.classList && ae.classList.contains('ytee-hk-capturing')) return;
       const isShiftedSym = e.shiftKey && (e.key in SHIFTED_SYMBOL_MAP);
-      const combo = [e.altKey ? 'alt+' : '', e.ctrlKey ? 'ctrl+' : '', e.shiftKey && !isShiftedSym ? 'shift+' : '', e.key.toLowerCase()].join('');
+      const combo = [e.altKey ? 'alt+' : '', e.ctrlKey ? 'ctrl+' : '', e.shiftKey && !isShiftedSym ? 'shift+' : '', hkKeyName(e.key)].join('');
       const action = hotkeyMap[combo];
       noteSleepActivity('activity');
-      if (annotPanelOpen && annotPanel && annotPanel.contains(e.target)) {
+      if (isAnnotPanelOpen() && getAnnotPanel() && getAnnotPanel().contains(e.target)) {
         if (e.key === 'Escape') closeAnnotPanel();
         return;
       }
-      if (annotPanelOpen && e.key === 'Escape') { closeAnnotPanel(); e.preventDefault(); return; }
+      if (isAnnotPanelOpen() && e.key === 'Escape') { closeAnnotPanel(); e.preventDefault(); return; }
       if (isSettingsOpen) {
+        if (e.key === "Escape") {
+          const clr = document.getElementById('ytee-cleardata-overlay');
+          if (clr && clr.classList.contains('show')) { clr.classList.remove('show'); e.preventDefault(); e.stopImmediatePropagation(); return; }
+        }
         if (e.key === "Escape" || action === 'toggleSettings') {
           hideSettingsModal(); e.preventDefault(); e.stopImmediatePropagation();
         }
@@ -3290,16 +1980,23 @@ if (window.self === window.top) {
           case 'toggleMute': toggleMute(); break;
           case 'toggleStats': toggleStats(); break;
           case 'toggleMiniStats': toggleMiniStats(); break;
-          case 'increaseSpeed': applySpeed(targetSpeed + SPEED_STEP); break;
-          case 'decreaseSpeed': applySpeed(targetSpeed - SPEED_STEP); break;
-          case 'increaseSpeedFine': applySpeed(targetSpeed + SPEED_STEP_FINE); break;
-          case 'decreaseSpeedFine': applySpeed(targetSpeed - SPEED_STEP_FINE); break;
+          case 'increaseSpeed': applySpeed(getTargetSpeed() + SPEED_STEP); break;
+          case 'decreaseSpeed': applySpeed(getTargetSpeed() - SPEED_STEP); break;
+          case 'increaseSpeedFine': applySpeed(getTargetSpeed() + SPEED_STEP_FINE); break;
+          case 'decreaseSpeedFine': applySpeed(getTargetSpeed() - SPEED_STEP_FINE); break;
           case 'volumeUp': applyVolume(targetVolume + (currentSettings.volumeStep / 100)); break;
           case 'volumeDown': applyVolume(targetVolume - (currentSettings.volumeStep / 100)); break;
           case 'toggleSettings': showSettingsModal(); break;
           case 'toggleFullscreen': toggleFullscreen(); break;
           case 'cycleSleepTimer': cycleSleepTimer(); break;
           case 'addBookmark': addBookmarkAtCurrent(true); break;
+          case 'screenshot': screenshotBtn.click(); break;
+          case 'clip': clipBtn.click(); break;
+          case 'replay': replayBtn.click(); break;
+          case 'pip': pipBtn.click(); break;
+          case 'copyUrl': urlBtn.click(); break;
+          case 'watchLater': wlBtn.click(); break;
+          case 'toggleCollapse': toggleBtn.click(); break;
         }
         showControls();
       }
@@ -3376,6 +2073,12 @@ if (window.self === window.top) {
     };
     [200, 800, 2000].forEach(ms => setTimeout(reapply, ms));
 
+    if (getTargetSpeed() !== SPEED_DEFAULT) {
+      [300, 1200, 2500].forEach(ms => setTimeout(() => {
+        if (Math.abs(video.playbackRate - getTargetSpeed()) > 0.01) applySpeed(getTargetSpeed());
+      }, ms));
+    }
+
     if (initialVid) {
       const cachedMiniStatsEntry = currentSettings.miniStatsCache[initialVid];
       const cachedMiniStats = (cachedMiniStatsEntry && typeof cachedMiniStatsEntry === 'object') ? cachedMiniStatsEntry.v : cachedMiniStatsEntry;
@@ -3429,7 +2132,7 @@ if (window.self === window.top) {
     const onVideoPause = () => { if (currentSettings.enablePositionCache) saveCurrentPosition(); };
     video.addEventListener('pause', onVideoPause);
 
-    applySpeed(targetSpeed);
+    applySpeed(getTargetSpeed());
     showControls();
 
     const onDblClick = (e) => {
@@ -3454,8 +2157,9 @@ if (window.self === window.top) {
       const prevW = lastEmbedW, prevH = lastEmbedH;
       lastEmbedW = w; lastEmbedH = h;
       document.documentElement.style.setProperty('--ytee-ew', w + 'px');
-      document.documentElement.classList.toggle('ytee-compact', w < 550 || h < 400);
+      document.documentElement.classList.toggle('ytee-compact', w < YTEE_BP.COMPACT_W || h < YTEE_BP.SHORT_H);
       applyMiniStatsPos();
+      __ytee_uiSig = null;
       applyUIStates(currentSettings);
 
       if (!document.fullscreenElement && prevW && prevH &&
@@ -3479,7 +2183,7 @@ if (window.self === window.top) {
         try {
           const next = normalizeSettings(typeof newVal === 'string' ? JSON.parse(newVal) : newVal);
           const diff = (k) => JSON.stringify(next[k]) !== JSON.stringify(currentSettings[k]);
-          const uiChanged = ['buttons', 'compactMode', 'highContrastUI', 'isCollapsed'].some(diff);
+          const uiChanged = ['buttons', 'compactMode', 'highContrastUI', 'enableBlur', 'isCollapsed'].some(diff);
           const hkChanged = diff('hotkeys');
           const qualChanged = diff('preferredQuality');
           const sleepChanged = diff('sleepTimer') || diff('sleepTimerCustom') || diff('sleepTimerReset') || diff('sleepTimerFadeOut');
@@ -3493,19 +2197,16 @@ if (window.self === window.top) {
     }
 
     const cleanup = () => {
-      clearTimeout(volTimeout); clearTimeout(speedTimeout); clearTimeout(controlsTimeout); clearTimeout(miniStatsTimer);
-      clearTimeout(historyRenderTimer);
+      clearTimeout(volTimeout); clearTimeout(speedTimeout); clearTimeout(controlsTimeout);
+      disposeStats();
+      disposeHistoryTab();
       clearTimeout(gistSyncStartTimer); if (gistSyncIntervalId) clearInterval(gistSyncIntervalId);
       if (clipRafId) cancelAnimationFrame(clipRafId);
-      if (historyRenderRaf) { cancelAnimationFrame(historyRenderRaf); historyRenderRaf = 0; }
       document.documentElement.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("dblclick", onDblClick);
       document.removeEventListener('fullscreenchange', onFullscreenChange);
-      window.removeEventListener('mousemove', onMiniStatsDrag);
-      window.removeEventListener('mouseup', onMiniStatsDragEnd);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
       video.removeEventListener('volumechange', onVideoVolumeChange);
       video.removeEventListener('timeupdate', onVideoTimeUpdate);
       video.removeEventListener('pause', onVideoPause);
@@ -3527,9 +2228,8 @@ if (window.self === window.top) {
       replayInitChunk = null;
       cachedPlayer = null;
       resizeObs.disconnect();
-      clearInterval(annotNowTimer);
-      document.removeEventListener('mousedown', onAnnotOutside, true);
-      [settingsModal, btnGroup, volPct, speedOverlay, clipOverlay, replayOverlay, sleepOverlay, sleepChip, miniStats, vol, muteBtn, annotPanel].forEach(el => {
+      closeAnnotPanel();
+      [settingsModal, btnGroup, volPct, speedOverlay, clipOverlay, replayOverlay, sleepOverlay, sleepChip, miniStats, vol, muteBtn, getAnnotPanel()].forEach(el => {
         if (el && el.parentNode) el.remove();
       });
     };

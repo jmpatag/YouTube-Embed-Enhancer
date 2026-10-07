@@ -20,13 +20,36 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 ## What's New
 
 <details open>
+<summary><strong>v3.3.0</strong></summary>
+
+### ⚙️ Changes & Improvements
+
+- **Easy Hotkey Recording:** Click any hotkey box and press your key combo to set it. Shows warning alerts if a shortcut is already taken.
+- **More Hotkeys:** Added custom shortcuts for Screenshot, Clip, Instant Replay, Picture-in-Picture, Copy URL, Watch Later, and Collapse UI.
+- **Selective Data Clearing:** Choose exactly what to delete (volume levels, watch positions, favorites, notes, or stats) instead of wiping everything at once. Works with synced Gist data too.
+- **Blur toggle:** Turn off frosted glass/blur effects under Settings
+- **Faster History Scrolling:** Added off-screen rendering optimization (`content-visibility: auto`) to the History tab, making scrolling much smoother when browsing hundreds of saved videos.
+- **Advanced Settings Menu:** Moved reset, clear data, and default options into an expandable "Advanced" section to prevent accidental clicks.
+- **Fixed Gist Token Reset:** Added a backup save system so settings don't reset on reload in managers like AdGuard for Windows.
+- **Better Compact Layout:** Improved UI responsiveness for small or embedded players (<750px wide or <400px high).
+- **Updated Watch Later Icon:** Replaced the ribbon icon with a clock symbol to avoid confusion.
+- **Favorite video** Favorite videos in your history will no longer be deleted by automatic cache limits.
+- **Dependency Update:** Updated Mediabunny to v1.56.2.
+
+### 🐛 Bug Fixes
+
+- **A possible fullscreen fix**
+
+</details>
+
+<details>
 <summary><strong>v3.2.0</strong></summary>
 
 ### ✨ New Features
 
-- **Notes** — The new `🔖` button lets you bookmark a moment in a video and give it a name. Click a saved note any time to jump right back to that spot, or rename and delete notes whenever you like. (Right-click the button to save a note without opening the panel, or set a hotkey for it.)
-- Your notes are saved and synced along with the rest of your history.
-- **Sleep Timer** — pauses the video after a set time — pick a preset (15 minutes to 4 hours), type your own number of minutes, or have it stop at the end of the video. A small countdown chip shows the time left, the timer keeps going even if the video reloads.
+- **Notes** — Use the note button to save a moment in a video with a custom name. You can jump back to it later, rename it, or delete it whenever you want. Right-click the button to save a note without opening the panel, or set a hotkey for it.
+- Your notes are saved and synced with the rest of your history.
+- **Sleep Timer** — Set it to pause the video after a preset time, a custom number of minutes, or when the video ends. A small countdown chip shows the remaining time, and it keeps working if the player reloads.
 
 ### ⚙️ Changes and Improvements
 
@@ -155,8 +178,8 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 - **Preferred Quality** — Set a default resolution that applies to all embeds.
 - **Initial Volume** — Set a default starting volume for all embeds in Settings → General.
 - **Persistent Volume** — Volume is remembered per video across sessions. If you hit refresh, you won't need to adjust the volume again — especially useful in Holodex multiview.
-- **Sleep Timer** — Auto-pause after a set time (15 min – 4 hours, a custom minute count, or the video's end) via the `😴` toolbar button or Settings → Tools. Survives player reloads, shows a `😴` countdown chip, optionally fades the audio out, and offers snooze buttons when it fires.
-- **Notes** — Click `🔖` (or the *Add Note* hotkey) to drop named timestamps on a video and jump back to them. They live in the History tab's Notes view, sync with Gist, and export as a chapter list.
+- **Sleep Timer** — Set it to pause the video after 15 minutes, 30 minutes, an hour, or any custom time you choose, or let it stop when the video ends. You can trigger it from the toolbar button or Settings → Tools. It keeps working if the player reloads, shows a countdown chip, can fade the audio out before stopping, and includes snooze buttons when it goes off.
+- **Notes** — Use the note button (or the *Add Note* hotkey) to drop a timestamp with a name, then jump back to it later. Notes show up in the History tab's Notes view, sync with Gist, and can be exported as a chapter list.
 
 ### Recording & Capture
 

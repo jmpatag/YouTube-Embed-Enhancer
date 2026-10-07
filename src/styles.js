@@ -395,6 +395,7 @@
           border: 1px solid rgba(255,255,255,0.07);
           border-radius: clamp(10px, calc(var(--ytee-ew) * 0.022), 20px);
           padding: 0;
+          position: relative;
           width: clamp(320px, min(calc(var(--ytee-ew) * 0.92), 94vw), 860px);
           max-height: clamp(400px, min(85vh, calc(var(--ytee-ew) * 1.1)), 800px);
           display: flex; flex-direction: column;
@@ -447,7 +448,8 @@
           .ytee-compact #custom-settings-save,
           .ytee-compact #custom-settings-cancel,
           .ytee-compact #custom-settings-restore,
-          .ytee-compact #custom-settings-clear {
+          .ytee-compact #custom-settings-reset-hotkeys,
+          .ytee-compact #custom-settings-clear-data {
             font-size: 9px !important;
             padding: 4px 8px !important;
           }
@@ -570,6 +572,12 @@
           border-radius: 8px; color: rgba(255,255,255,0.9); font-size: 12px; font-weight: 600;
           font-family: ui-monospace, monospace; transition: border-color 0.15s, box-shadow 0.15s; text-align: right;
           }
+          /* Selects size to their content instead of clipping at a fixed width */
+          #custom-settings-content .ytee-quality-select {
+          width: auto; min-width: 96px; max-width: 100%;
+          text-align: left; text-align-last: left;
+          }
+          #custom-settings-content .setting-control { min-width: 0; max-width: 100%; }
           #custom-settings-content .hk-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
           #custom-settings-content .hk-input[type="number"]::-webkit-outer-spin-button,
           #custom-settings-content .hk-input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -577,6 +585,29 @@
           outline: none; border-color: rgba(16,185,129,0.6);
           box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
           }
+          /* hotkey capture field */
+          #custom-settings-content .ytee-hk-field { display: flex; align-items: center; gap: 4px; }
+          /* Hotkey fields read as keycaps: dashed pill when unset, solid accent chip when bound */
+          #custom-settings-content .ytee-hk-field .hk-input {
+          width: auto; min-width: 92px; max-width: 150px; cursor: pointer; text-align: center;
+          border-style: dashed; border-color: rgba(255,255,255,0.28); background: rgba(255,255,255,0.05);
+          }
+          #custom-settings-content .ytee-hk-field .hk-input:not(:placeholder-shown) {
+          border-style: solid; border-color: rgba(16,185,129,0.5);
+          background: rgba(16,185,129,0.12); color: var(--ytee-accent); text-transform: uppercase;
+          }
+          #custom-settings-content .hk-input.ytee-hk-capturing,
+          #custom-settings-content .hk-input.ytee-hk-capturing:not(:placeholder-shown) {
+          color: var(--ytee-accent); border-style: solid; border-color: rgba(16,185,129,0.6);
+          background: rgba(16,185,129,0.08);
+          }
+          #custom-settings-content .hk-input.ytee-hk-dupe { border-color: rgba(245,181,61,0.8); box-shadow: 0 0 0 3px rgba(245,181,61,0.18); }
+          #custom-settings-content .ytee-hk-field .hk-input::placeholder { color: rgba(255,255,255,0.35); font-weight: 500; }
+          #custom-settings-content .ytee-hk-clear {
+          cursor: pointer; border: none; background: transparent; color: rgba(255,255,255,0.4);
+          font-size: 15px; line-height: 1; padding: 2px 5px; border-radius: 4px;
+          }
+          #custom-settings-content .ytee-hk-clear:hover { color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.1); }
 
           /* Range slider */
           #custom-settings-content input[type="range"] {
@@ -597,7 +628,7 @@
           padding: clamp(10px, calc(var(--ytee-ew) * 0.018), 14px) clamp(12px, calc(var(--ytee-ew) * 0.03), 26px);
           background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.05);
           }
-          #custom-settings-restore, #custom-settings-clear-cache {
+          #custom-settings-restore, #custom-settings-reset-hotkeys, #custom-settings-clear-data {
           display: inline-flex; align-items: center; gap: 5px;
           padding: clamp(5px, calc(var(--ytee-ew) * 0.009), 7px) clamp(8px, calc(var(--ytee-ew) * 0.015), 12px);
           background: transparent; border: 1px solid rgba(255,255,255,0.08);
@@ -605,16 +636,47 @@
           font-size: clamp(10px, calc(var(--ytee-ew) * 0.014), 12px); font-weight: 600;
           transition: background 0.15s, color 0.15s, border-color 0.15s;
           }
-          #custom-settings-restore { margin-right: 0; }
-          #custom-settings-clear-cache { margin-right: auto; color: rgba(255,100,100,0.5); border-color: rgba(255,100,100,0.15); }
-          #custom-settings-restore:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.15); }
-          #custom-settings-clear-cache:hover { background: rgba(255,60,60,0.08); color: rgba(255,100,100,0.9); border-color: rgba(255,100,100,0.3); }
-          #custom-settings-restore.confirm, #custom-settings-clear-cache.confirm {
+          #custom-settings-clear-data { color: rgba(255,100,100,0.5); border-color: rgba(255,100,100,0.15); }
+          #custom-settings-restore:hover, #custom-settings-reset-hotkeys:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); border-color: rgba(255,255,255,0.15); }
+          #custom-settings-clear-data:hover { background: rgba(255,60,60,0.08); color: rgba(255,100,100,0.9); border-color: rgba(255,100,100,0.3); }
+          #custom-settings-restore:disabled { opacity: 0.6; cursor: default; }
+          #custom-settings-restore.confirm, #custom-settings-reset-hotkeys.confirm {
           border-color: #f59e0b !important; color: #f59e0b !important; background: rgba(245,158,11,0.06) !important;
           }
-          #custom-settings-restore.success, #custom-settings-clear-cache.success {
+          #custom-settings-restore.success, #custom-settings-reset-hotkeys.success {
           border-color: var(--ytee-accent) !important; color: var(--ytee-accent) !important; background: rgba(16,185,129,0.06) !important;
           }
+
+          /* Clear data picker overlay */
+          #ytee-cleardata-overlay {
+          position: absolute; inset: 0; z-index: 6; border-radius: inherit;
+          background: rgba(0,0,0,0.6); display: none;
+          align-items: center; justify-content: center; padding: 16px;
+          }
+          #ytee-cleardata-overlay.show { display: flex; }
+          #ytee-cleardata-panel {
+          background: #1f1f1f; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+          padding: 16px 18px; width: min(360px, 100%); max-height: 100%; overflow-y: auto;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.6); color: #fff;
+          font-family: system-ui, -apple-system, sans-serif;
+          }
+          .ytee-clr-title { font-size: 14px; font-weight: 700; }
+          .ytee-clr-sub { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 3px; }
+          .ytee-clr-head { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.35); margin: 13px 0 3px; }
+          .ytee-clr-row { display: flex; align-items: center; gap: 9px; padding: 6px 4px; border-radius: 6px; cursor: pointer; font-size: 12.5px; color: rgba(255,255,255,0.85); }
+          .ytee-clr-row:hover { background: rgba(255,255,255,0.05); }
+          .ytee-clr-row.empty { opacity: 0.4; cursor: default; }
+          .ytee-clr-row input { cursor: pointer; accent-color: #ff6b6b; flex-shrink: 0; }
+          .ytee-clr-row.empty input { cursor: default; }
+          .ytee-clr-name { flex: 1; }
+          .ytee-clr-count { font: 600 11px ui-monospace, monospace; color: rgba(255,255,255,0.4); }
+          .ytee-clr-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 15px; }
+          .ytee-clr-foot button { padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; }
+          .ytee-clr-cancel { background: transparent; border-color: rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); }
+          .ytee-clr-cancel:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
+          .ytee-clr-go { background: rgba(255,60,60,0.15); border-color: rgba(255,80,80,0.4); color: #ff6b6b; }
+          .ytee-clr-go:hover { background: rgba(255,60,60,0.25); }
+          .ytee-clr-foot button:disabled { opacity: 0.55; cursor: default; }
           #custom-settings-cancel, #custom-settings-save {
           padding: clamp(6px, calc(var(--ytee-ew) * 0.011), 9px) clamp(14px, calc(var(--ytee-ew) * 0.025), 20px);
           border-radius: 9px; font-size: clamp(11px, calc(var(--ytee-ew) * 0.016), 13.5px);
@@ -687,6 +749,10 @@
           .ytee-hist-card:hover { border-color: rgba(255,255,255,0.18) !important; box-shadow: 0 4px 24px rgba(0,0,0,0.35); }
           .ytee-hist-card .ytee-hist-overlay { opacity: 0; pointer-events: none; transition: opacity 0.18s; }
           .ytee-hist-card:hover .ytee-hist-overlay { opacity: 1; pointer-events: auto; }
+          /* Skip rendering off-screen history entries — big CPU/GPU/compositing win on long lists.
+             contain-intrinsic-size keeps the scrollbar stable; the auto keyword remembers real size after first paint. */
+          .ytee-hist-list { content-visibility: auto; contain-intrinsic-size: auto 61px; }
+          .ytee-hist-card { content-visibility: auto; contain-intrinsic-size: auto 210px; }
           .ytee-hist-link:hover { color: #fff !important; text-decoration: underline; }
           .ytee-hist-sublink:hover { color: rgba(255,255,255,0.65) !important; text-decoration: underline; }
 
@@ -699,7 +765,48 @@
           .ytee-abtn-overlay:hover { background: rgba(40,40,40,0.95); transform: scale(1.06); }
           .ytee-abtn-strip { padding: 4px 8px; font-size: 10.5px; font-weight: 600; white-space: nowrap; border-radius: 6px; border-color: rgba(255,255,255,0.11); color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.07); transition: background 0.12s, transform 0.1s; }
           .ytee-abtn-strip:hover { background: rgba(255,255,255,0.13); transform: scale(1.05); }
-          .ytee-bkmk-row:hover { background: rgba(255,255,255,0.05); }`;
+          .ytee-bkmk-row:hover { background: rgba(255,255,255,0.05); }
+
+          /* Narrow embeds: one-column button grid, selects drop onto their own line.
+             .ytee-compact is JS-toggled below YTEE_BP.COMPACT_W (w) or YTEE_BP.SHORT_H (h). */
+          .ytee-compact .ytee-grid-2 { grid-template-columns: 1fr; }
+          .ytee-compact #custom-settings-content .setting-item:has(.ytee-quality-select) { flex-wrap: wrap; }
+          .ytee-compact #custom-settings-content .setting-item:has(.ytee-quality-select) .setting-control {
+          width: 100%; display: flex; justify-content: flex-end;
+          }
+          .ytee-compact #custom-settings-content .setting-item {
+          padding-top: clamp(6px, calc(var(--ytee-ew) * 0.012), 11px);
+          padding-bottom: clamp(6px, calc(var(--ytee-ew) * 0.012), 11px);
+          }
+
+          /* Footer "Advanced" disclosure keeps the destructive actions away from Save */
+          #custom-settings-buttons .ytee-adv { margin-right: auto; position: relative; }
+          #custom-settings-buttons .ytee-adv > summary {
+          list-style: none; cursor: pointer;
+          font-size: clamp(10px, calc(var(--ytee-ew) * 0.014), 12px); font-weight: 600;
+          color: rgba(255,255,255,0.4);
+          border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+          padding: clamp(5px, calc(var(--ytee-ew) * 0.009), 7px) clamp(8px, calc(var(--ytee-ew) * 0.015), 12px);
+          transition: color 0.15s, border-color 0.15s;
+          }
+          #custom-settings-buttons .ytee-adv > summary::-webkit-details-marker { display: none; }
+          #custom-settings-buttons .ytee-adv > summary::before { content: '▸ '; opacity: 0.6; }
+          #custom-settings-buttons .ytee-adv[open] > summary::before { content: '▾ '; }
+          #custom-settings-buttons .ytee-adv > summary:hover,
+          #custom-settings-buttons .ytee-adv[open] > summary { color: rgba(255,255,255,0.75); border-color: rgba(255,255,255,0.15); }
+          #custom-settings-buttons .ytee-adv-tray { display: none; }
+          #custom-settings-buttons .ytee-adv[open] .ytee-adv-tray {
+          display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+          position: absolute; bottom: calc(100% + 6px); left: 0; white-space: nowrap;
+          padding: 8px; border-radius: 10px;
+          background: #1f1f1f; border: 1px solid rgba(255,255,255,0.1);
+          z-index: 3; box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+          }
+          #custom-settings-buttons .ytee-adv[open] .ytee-adv-tray > button { margin: 0; justify-content: center; }
+
+          /* Blur effects toggled off (Interface > Blur effects) — drop GPU-compositing blur passes */
+          :root[data-ytee-blur="0"] #custom-settings-modal { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(0,0,0,0.9); }
+          :root[data-ytee-blur="0"] .ytee-abtn-overlay { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(15,15,15,0.94); }`;
 
 let yteeSettingsCSSInjected = false;
 export const ensureSettingsCSS = () => {

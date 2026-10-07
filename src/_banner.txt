@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      3.2.0
-// @description  Restores volume control and adds a versatile toolkit for real-time diagnostics, video clipping, screenshots, and persistent playback customization.
+// @version      3.3.0
+// @description  Makes watching YouTube on embeds effortless. Upgrades barebones players (Holodex, multiview, forums) with a volume slider & boost, clip recording, PiP, Watch Later, sleep timer, synced history, and custom hotkeys.
 // @author       jmpatag
 // @license      GPL-3.0
 // @match        *://www.youtube.com/embed/*

@@ -9,7 +9,7 @@
     "upgrade": "npm install mediabunny@latest && npm run build"
   },
   "dependencies": {
-    "mediabunny": "^1.56.2"
+    "mediabunny": "^1.61.3"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

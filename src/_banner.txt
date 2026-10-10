@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Embed Enhancer
 // @namespace    https://github.com/jmpatag
-// @version      3.3.0
+// @version      3.3.1
 // @description  Makes watching YouTube on embeds effortless. Upgrades barebones players (Holodex, multiview, forums) with a volume slider & boost, clip recording, PiP, Watch Later, sleep timer, synced history, and custom hotkeys.
 // @author       jmpatag
 // @license      GPL-3.0

@@ -20,6 +20,16 @@ Restores volume control and adds a versatile toolkit for real-time diagnostics, 
 ## What's New
 
 <details open>
+<summary><strong>v3.3.1</strong></summary>
+
+### ⚙️ Changes
+
+- **Mediabunny:** Updated to 1.61.3
+
+</details>
+
+
+<details>
 <summary><strong>v3.3.0</strong></summary>
 
 ### ⚙️ Changes & Improvements
